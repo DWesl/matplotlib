@@ -157,11 +157,11 @@ jobs:
         run: |
           # Upgrade pip and setuptools and wheel to get as clean an install as
           # possible.
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip 'setuptools<60' wheel
 
           # Install dependencies from PyPI.
           python -m pip install --upgrade $PRE \
-            cycler fonttools kiwisolver numpy packaging pillow pyparsing \
+            cycler fonttools kiwisolver 'numpy!=1.21.*' packaging pillow pyparsing \
             python-dateutil setuptools-scm \
             -r requirements/testing/all.txt \
             ${{ matrix.extra-requirements }}

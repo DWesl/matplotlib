@@ -329,6 +329,7 @@ jobs:
             python3${{ matrix.python-minor-version }}-wx
             xorg-server-extra libxcb-icccm4 libxcb-image0 libxcb-keysyms1
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0
+            libjpeg-devel
             
       - name: Cache pip
         uses: actions/cache@v3

@@ -306,7 +306,7 @@ jobs:
       - uses: cygwin/cygwin-install-action@v2
         with:
           packages: >-
-            ccache gdb graphviz libcairo-devel libffi-devel libgeos-devel libQt5Core-devel pkgconf
+            ccache gcc-g++ gdb graphviz libcairo-devel libffi-devel libgeos-devel libQt5Core-devel pkgconf
             texlive-collection-pictures texlive-collection-fontsrecommended texlive-collection-latex
             texlive-collection-latexextra texlive-collection-latexrecommended texlive-collection-luatex
             texlive-collection-xetex noto-cjk-fonts
@@ -366,6 +366,12 @@ jobs:
       - uses: actions/checkout@v3
         with: 
           fetch-depth: 0
+          
+      - name: Check missing files
+        shell: bash.exe -eo pipefail -o igncr "{0}"
+        run: |
+          ls -l /usr/include/python*/Python.h
+          file /usr/include/python*/Python.h
             
       - name: Install Python dependencies
         shell: bash.exe -eo pipefail -o igncr "{0}"

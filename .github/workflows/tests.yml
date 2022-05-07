@@ -330,7 +330,7 @@ jobs:
             xorg-server-extra libxcb-icccm4 libxcb-image0 libxcb-keysyms1
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0
             libfreetype-devel libqhull-devel
-            libjpeg-devel
+            libjpeg-devel libwebp-devel
             
       - name: Cache pip
         uses: actions/cache@v3
@@ -421,6 +421,11 @@ jobs:
           # constraints are held.
           python -m pip install --no-deps -ve .
           unset CPPFLAGS
+
+      - name: Rebase DLLs
+        shell: bash.exe -eo pipefail -o igncr "{0}"
+        run: |
+          /usr/bin/rebase --database $(find {/usr,/usr/local/,~,~/.local}/{bin,lib/python3.?/site-packages} -name \*.exe -o -name \*.dll)
 
       - name: Run pytest
         shell: bash.exe -eo pipefail -o igncr "{0}"

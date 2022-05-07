@@ -423,6 +423,7 @@ jobs:
           unset CPPFLAGS
 
       - name: Run pytest
+        shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |
           xvfb-run python -mpytest -raR -n auto \
             --maxfail=50 --timeout=300 --durations=25 \

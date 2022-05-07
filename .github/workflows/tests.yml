@@ -329,7 +329,7 @@ jobs:
             python3${{ matrix.python-minor-version }}-wx
             xorg-server-extra libxcb-icccm4 libxcb-image0 libxcb-keysyms1
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0
-            libfreetype-devel libqhull-devel
+            make
             libjpeg-devel libwebp-devel
             
       - name: Cache pip

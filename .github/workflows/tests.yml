@@ -413,8 +413,8 @@ jobs:
           backend=Agg
           
           [libs]
-          system_freetype = True
-          system_qhull = True
+          system_freetype = False
+          system_qhull = False
           EOT
           cat mplsetup.cfg
           # All dependencies must have been pre-installed, so that the minver

@@ -247,7 +247,7 @@ jobs:
   test-cygwin:
     runs-on: windows-latest
     name: Python 3.9 on Cygwin
-    if: "github.repository == 'matplotlib/matplotlib' && !contains(github.event.head_commit.message, '[ci skip]') && !contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip github]')"
+    if: "!contains(github.event.head_commit.message, '[ci skip]') && !contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip github]')"
     env:
       SHELLOPTS: igncr
       CYGWIN_NOWINPATH: 1

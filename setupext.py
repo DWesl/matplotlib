@@ -620,7 +620,7 @@ class FreeType(SetupPackage):
             if sys.platform == "cygwin":
                 # Re-run autoconf and automake
                 # This compiled on Cygwin back in the day, it should now
-                subprocess.check_call(["/bin/dash", "/usr/bin/autoreconf"], env=env, cwd=src_path)
+                subprocess.check_call(["/bin/dash", "./autogen.sh"], env=env, cwd=src_path)
             configure = [
                 "/bin/dash", "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",

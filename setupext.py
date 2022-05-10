@@ -617,8 +617,12 @@ class FreeType(SetupPackage):
                 },
             }
             env["CFLAGS"] = env.get("CFLAGS", "") + " -fPIC"
+            if sys.platform == "cygwin":
+                # Re-run autoconf and automake
+                # This compiled on Cygwin back in the day, it should now
+                subprocess.check_call(["/bin/dash", "/usr/bin/autoreconf"], env=env, cwd=src_path)
             configure = [
-                "./configure", "--with-zlib=no", "--with-bzip2=no",
+                "/bin/dash", "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",
                 "--disable-shared"
             ]

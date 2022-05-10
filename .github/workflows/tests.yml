@@ -371,6 +371,7 @@ jobs:
           system_qhull = False
           EOT
           cat mplsetup.cfg
+          python setup.py build_ext
           # All dependencies must have been pre-installed, so that the minver
           # constraints are held.
           python -m pip install --no-deps -ve .

@@ -284,10 +284,14 @@ jobs:
       - uses: cygwin/cygwin-install-action@v2
         with:
           packages: >-
-            ccache gcc-g++ gdb graphviz libcairo-devel libffi-devel libgeos-devel libQt5Core-devel pkgconf
-            texlive-collection-pictures texlive-collection-fontsrecommended texlive-collection-latex
-            texlive-collection-latexextra texlive-collection-latexrecommended texlive-collection-luatex
-            texlive-collection-xetex noto-cjk-fonts
+            ccache gcc-g++ gdb graphviz libcairo-devel libffi-devel
+            libgeos-devel libQt5Core-devel pkgconf
+            texlive-collection-pictures
+            texlive-collection-fontsrecommended
+            texlive-collection-latex texlive-collection-latexextra
+            texlive-collection-latexrecommended
+            texlive-collection-luatex texlive-collection-xetex
+            noto-cjk-fonts
             python39-devel
             python39-pip
             python39-wheel
@@ -305,9 +309,10 @@ jobs:
             python39-cairo
             python39-gi
             python39-wx
-            xorg-server-extra libxcb-icccm4 libxcb-image0 libxcb-keysyms1
-            libxcb-randr0 libxcb-render-util0 libxcb-xinerama0
-            make autoconf autoconf2.5 automake automake1.14 libtool
+            xorg-server-extra libxcb-icccm4 libxcb-image0
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
+            libxcb-xinerama0
+            make autoconf autoconf2.5 automake automake1.10 libtool
             libjpeg-devel libwebp-devel
 
       - name: Cache pip

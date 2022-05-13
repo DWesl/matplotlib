@@ -385,6 +385,8 @@ jobs:
 
       - name: Install matplotlib
         shell: bash.exe -eo pipefail -o igncr "{0}"
+        env:
+          AUTOCONF: /usr/bin/autoconf-2.69
         run: |
           ccache -s
           git describe

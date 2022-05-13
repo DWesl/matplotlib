@@ -621,6 +621,11 @@ class FreeType(SetupPackage):
                 # Re-run autoconf and automake
                 # This compiled on Cygwin back in the day, it should now
                 subprocess.check_call(
+                    ["chmod", "u+rw", "-R", "."],
+                    env=env,
+                    cwd=src_path
+                )
+                subprocess.check_call(
                     ["/bin/dash", "/usr/bin/autoreconf", "--force", "--install"],
                     env=env,
                     cwd=os.path.join(src_path, "builds", "unix")

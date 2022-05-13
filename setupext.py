@@ -620,6 +620,7 @@ class FreeType(SetupPackage):
             if sys.platform == "cygwin":
                 # Re-run autoconf and automake
                 # This compiled on Cygwin back in the day, it should now
+                env["AUTOCONF"] = "/usr/bin/autoconf-2.69"
                 subprocess.check_call(
                     ["chmod", "u+rw", "-R", "."],
                     env=env,

@@ -629,7 +629,14 @@ class FreeType(SetupPackage):
             }
             env["CFLAGS"] = env.get("CFLAGS", "") + " -fPIC"
             if sys.platform == "cygwin":
-                subprocess.check_call(["autoconf"], env=env, cwd=src_path)
+                subprocess.check_call(
+                    ["/usr/bin/autoconf-2.69 --force"], env=env, cwd=src_path
+                )
+                print("Ran autoconf", flush=True)
+                subprocess.check_call(
+                    ["/usr/bin/autoreconf --force --install"],
+                    env=env, cwd=src_path
+                )
             configure = [
                 "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",

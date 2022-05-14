@@ -635,7 +635,7 @@ class FreeType(SetupPackage):
                 )
                 print("Ran autoconf", flush=True)
                 subprocess.check_call(
-                    ["/usr/bin/autoreconf --force --install"],
+                    ["/usr/bin/autoreconf", "--force", "--install"],
                     env=env, cwd=os.path.join(src_path, "builds", "unix")
                 )
             configure = [

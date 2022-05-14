@@ -630,7 +630,8 @@ class FreeType(SetupPackage):
             env["CFLAGS"] = env.get("CFLAGS", "") + " -fPIC"
             if sys.platform == "cygwin":
                 subprocess.check_call(
-                    ["/usr/bin/autoconf-2.69 --force"], env=env, cwd=src_path
+                    ["/usr/bin/autoconf-2.69", "--force"],
+                    env=env, cwd=src_path
                 )
                 print("Ran autoconf", flush=True)
                 subprocess.check_call(

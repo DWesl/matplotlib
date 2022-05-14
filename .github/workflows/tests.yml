@@ -367,8 +367,8 @@ jobs:
       - name: Ensure correct python version
         shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |
-          /usr/sbin/alternatives --set python /usr/bin/python3.${{ matrix.python-minor-version }}.exe
-          /usr/sbin/alternatives --set python3 /usr/bin/python3.${{ matrix.python-minor-version }}.exe
+          /usr/sbin/alternatives --set python /usr/bin/python3.${{ matrix.python-minor-version }}
+          /usr/sbin/alternatives --set python3 /usr/bin/python3.${{ matrix.python-minor-version }}
 
       - uses: actions/checkout@v3
         with:

@@ -631,7 +631,7 @@ class FreeType(SetupPackage):
             if sys.platform == "cygwin":
                 subprocess.check_call(
                     ["/usr/bin/autoconf-2.69", "--force"],
-                    env=env, cwd=os.path.join(src_path, "build", "unix")
+                    env=env, cwd=os.path.join(src_path, "builds", "unix")
                 )
                 print("Ran autoconf", flush=True)
                 subprocess.check_call(

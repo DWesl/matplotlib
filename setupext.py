@@ -633,11 +633,11 @@ class FreeType(SetupPackage):
                     ["/usr/bin/autoconf-2.69", "--force"],
                     env=env, cwd=os.path.join(src_path, "builds", "unix")
                 )
-                print("Ran autoconf", flush=True)
-                subprocess.check_call(
-                    ["/usr/bin/autoreconf", "--force", "--install"],
-                    env=env, cwd=os.path.join(src_path, "builds", "unix")
-                )
+                # print("Ran autoconf", flush=True)
+                # subprocess.check_call(
+                #     ["/usr/bin/autoreconf", "--force", "--install"],
+                #     env=env, cwd=os.path.join(src_path, "builds", "unix")
+                # )
             configure = [
                 "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",

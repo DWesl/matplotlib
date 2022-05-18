@@ -630,11 +630,15 @@ class FreeType(SetupPackage):
             env["CFLAGS"] = env.get("CFLAGS", "") + " -fPIC"
             if sys.platform == "cygwin":
                 subprocess.check_call(
+                    ["/usr/bin/chmod", "u+rw", "-R", "."],
+                    env=env, cwd=os.path.join(src_path, "builds", "unix")
+                )
+                subprocess.check_call(
                     ["/usr/bin/autoconf-2.69", "--force"],
                     env=env, cwd=os.path.join(src_path, "builds", "unix")
                 )
                 subprocess.check_call(
-                    ["/usr/bin/libtoolize", "--verbose", "--force"],
+                    ["/usr/bin/libtoolize", "--verbose", "--force", "--copy"],
                     env=env, cwd=os.path.join(src_path, "builds", "unix")
                 )
                 # print("Ran autoconf", flush=True)

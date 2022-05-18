@@ -632,7 +632,7 @@ class FreeType(SetupPackage):
                 sys.stderr.flush()
                 print("Adding permissions", flush=True)
                 subprocess.check_call(
-                    ["/usr/bin/chmod", "u+rwx", "-R", "."],
+                    ["/usr/bin/chmod", "a+rwx", "-R", "."],
                     env=env, cwd=os.path.join(src_path, "builds", "unix")
                 )
                 print("Running autoconf", flush=True)

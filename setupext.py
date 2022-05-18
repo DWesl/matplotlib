@@ -629,14 +629,18 @@ class FreeType(SetupPackage):
             }
             env["CFLAGS"] = env.get("CFLAGS", "") + " -fPIC"
             if sys.platform == "cygwin":
+                sys.stderr.flush()
+                print("Adding permissions", flush=True)
                 subprocess.check_call(
-                    ["/usr/bin/chmod", "u+rw", "-R", "."],
+                    ["/usr/bin/chmod", "u+rwx", "-R", "."],
                     env=env, cwd=os.path.join(src_path, "builds", "unix")
                 )
+                print("Running autoconf", flush=True)
                 subprocess.check_call(
                     ["/usr/bin/autoconf-2.69", "--force"],
                     env=env, cwd=os.path.join(src_path, "builds", "unix")
                 )
+                print("Running libtoolize", flush=True)
                 subprocess.check_call(
                     ["/usr/bin/libtoolize", "--verbose", "--force", "--copy"],
                     env=env, cwd=os.path.join(src_path, "builds", "unix")
@@ -646,6 +650,7 @@ class FreeType(SetupPackage):
                 #     ["/usr/bin/autoreconf", "--force", "--install"],
                 #     env=env, cwd=os.path.join(src_path, "builds", "unix")
                 # )
+                print("Updated autotools", flush=True)
             configure = [
                 "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",

@@ -335,6 +335,7 @@ jobs:
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
             libxcb-xinerama0
             make autoconf autoconf2.5 automake automake1.10 libtool
+            libqhull-devel libfreetype-devel
             libjpeg-devel libwebp-devel
 
       - name: Cache pip

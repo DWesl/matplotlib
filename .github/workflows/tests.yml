@@ -428,6 +428,7 @@ jobs:
           cat mplsetup.cfg
           # All dependencies must have been pre-installed, so that the minver
           # constraints are held.
+          python setup.py build_ext
           python -m pip install --no-deps -ve .
           unset CPPFLAGS
 
@@ -435,6 +436,11 @@ jobs:
         shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |
           /usr/bin/rebase --database $(find {/usr,/usr/local/,~,~/.local}/{bin,lib/python3.?/site-packages} -name \*.exe -o -name \*.dll)
+          
+      - name: Check that Matplotlib imports
+        shell: bash.exe -eo pipefail -o igncr "{0}"
+        run: |
+          /usr/bin/python -c "import matplotlib as mpl; import matplotlib.pyplot as plt"
 
       - name: Run pytest
         shell: bash.exe -eo pipefail -o igncr "{0}"

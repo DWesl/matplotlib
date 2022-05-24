@@ -19,7 +19,7 @@ import matplotlib as mpl
 from . import (_api, _docstring, backend_tools, cbook, colors, ticker,
                transforms)
 from .lines import Line2D
-from .patches import Circle, Rectangle, Ellipse
+from .patches import Circle, Rectangle, Ellipse, Polygon
 from .transforms import TransformedPatchPath, Affine2D
 
 
@@ -111,8 +111,6 @@ class AxesWidget(Widget):
         If False, the widget does not respond to events.
     """
 
-    cids = _api.deprecated("3.4")(property(lambda self: self._cids))
-
     def __init__(self, ax):
         self.ax = ax
         self.canvas = ax.figure.canvas
@@ -152,11 +150,6 @@ class Button(AxesWidget):
     hovercolor
         The color of the button when hovering.
     """
-
-    cnt = _api.deprecated("3.4")(property(  # Not real, but close enough.
-        lambda self: len(self._observers.callbacks['clicked'])))
-    observers = _api.deprecated("3.4")(property(
-        lambda self: self._observers.callbacks['clicked']))
 
     def __init__(self, ax, label, image=None,
                  color='0.85', hovercolor='0.95'):
@@ -322,11 +315,6 @@ class Slider(SliderBase):
     val : float
         Slider value.
     """
-
-    cnt = _api.deprecated("3.4")(property(  # Not real, but close enough.
-        lambda self: len(self._observers.callbacks['changed'])))
-    observers = _api.deprecated("3.4")(property(
-        lambda self: self._observers.callbacks['changed']))
 
     def __init__(self, ax, label, valmin, valmax, valinit=0.5, valfmt=None,
                  closedmin=True, closedmax=True, slidermin=None,
@@ -709,7 +697,7 @@ class RangeSlider(SliderBase):
                 facecolor=track_color
             )
             ax.add_patch(self.track)
-            self.poly = ax.axhspan(valinit[0], valinit[1], 0, 1, **kwargs)
+            poly_transform = self.ax.get_yaxis_transform(which="grid")
             handleXY_1 = [.5, valinit[0]]
             handleXY_2 = [.5, valinit[1]]
         else:
@@ -719,9 +707,15 @@ class RangeSlider(SliderBase):
                 facecolor=track_color
             )
             ax.add_patch(self.track)
-            self.poly = ax.axvspan(valinit[0], valinit[1], 0, 1, **kwargs)
+            poly_transform = self.ax.get_xaxis_transform(which="grid")
             handleXY_1 = [valinit[0], .5]
             handleXY_2 = [valinit[1], .5]
+        self.poly = Polygon(np.zeros([5, 2]), **kwargs)
+        self._update_selection_poly(*valinit)
+        self.poly.set_transform(poly_transform)
+        self.poly.get_path()._interpolation_steps = 100
+        self.ax.add_patch(self.poly)
+        self.ax._request_autoscale_view()
         self._handles = [
             ax.plot(
                 *handleXY_1,
@@ -776,6 +770,27 @@ class RangeSlider(SliderBase):
 
         self._active_handle = None
         self.set_val(valinit)
+
+    def _update_selection_poly(self, vmin, vmax):
+        """
+        Update the vertices of the *self.poly* slider in-place
+        to cover the data range *vmin*, *vmax*.
+        """
+        # The vertices are positioned
+        #  1 ------ 2
+        #  |        |
+        # 0, 4 ---- 3
+        verts = self.poly.xy
+        if self.orientation == "vertical":
+            verts[0] = verts[4] = .25, vmin
+            verts[1] = .25, vmax
+            verts[2] = .75, vmax
+            verts[3] = .75, vmin
+        else:
+            verts[0] = verts[4] = vmin, .25
+            verts[1] = vmin, .75
+            verts[2] = vmax, .75
+            verts[3] = vmax, .25
 
     def _min_in_bounds(self, min):
         """Ensure the new min value is between valmin and self.val[1]."""
@@ -903,36 +918,24 @@ class RangeSlider(SliderBase):
         """
         val = np.sort(val)
         _api.check_shape((2,), val=val)
-        val[0] = self._min_in_bounds(val[0])
-        val[1] = self._max_in_bounds(val[1])
-        xy = self.poly.xy
+        vmin, vmax = val
+        vmin = self._min_in_bounds(vmin)
+        vmax = self._max_in_bounds(vmax)
+        self._update_selection_poly(vmin, vmax)
         if self.orientation == "vertical":
-            xy[0] = .25, val[0]
-            xy[1] = .25, val[1]
-            xy[2] = .75, val[1]
-            xy[3] = .75, val[0]
-            xy[4] = .25, val[0]
-
-            self._handles[0].set_ydata([val[0]])
-            self._handles[1].set_ydata([val[1]])
+            self._handles[0].set_ydata([vmin])
+            self._handles[1].set_ydata([vmax])
         else:
-            xy[0] = val[0], .25
-            xy[1] = val[0], .75
-            xy[2] = val[1], .75
-            xy[3] = val[1], .25
-            xy[4] = val[0], .25
+            self._handles[0].set_xdata([vmin])
+            self._handles[1].set_xdata([vmax])
 
-            self._handles[0].set_xdata([val[0]])
-            self._handles[1].set_xdata([val[1]])
-
-        self.poly.xy = xy
-        self.valtext.set_text(self._format(val))
+        self.valtext.set_text(self._format((vmin, vmax)))
 
         if self.drawon:
             self.ax.figure.canvas.draw_idle()
-        self.val = val
+        self.val = (vmin, vmax)
         if self.eventson:
-            self._observers.process("changed", val)
+            self._observers.process("changed", (vmin, vmax))
 
     def on_changed(self, func):
         """
@@ -973,11 +976,6 @@ class CheckButtons(AxesWidget):
         List of lines for the x's in the check boxes.  These lines exist for
         each box, but have ``set_visible(False)`` when its box is not checked.
     """
-
-    cnt = _api.deprecated("3.4")(property(  # Not real, but close enough.
-        lambda self: len(self._observers.callbacks['clicked'])))
-    observers = _api.deprecated("3.4")(property(
-        lambda self: self._observers.callbacks['clicked']))
 
     def __init__(self, ax, labels, actives=None):
         """
@@ -1126,12 +1124,6 @@ class TextBox(AxesWidget):
         The color of the text box when hovering.
     """
 
-    cnt = _api.deprecated("3.4")(property(  # Not real, but close enough.
-        lambda self: sum(len(d) for d in self._observers.callbacks.values())))
-    change_observers = _api.deprecated("3.4")(property(
-        lambda self: self._observers.callbacks['change']))
-    submit_observers = _api.deprecated("3.4")(property(
-        lambda self: self._observers.callbacks['submit']))
     DIST_FROM_LEFT = _api.deprecate_privatize_attribute("3.5")
 
     def __init__(self, ax, label, initial='',
@@ -1461,11 +1453,6 @@ class RadioButtons(AxesWidget):
         self.connect_event('button_press_event', self._clicked)
 
         self._observers = cbook.CallbackRegistry(signals=["clicked"])
-
-    cnt = _api.deprecated("3.4")(property(  # Not real, but close enough.
-        lambda self: len(self._observers.callbacks['clicked'])))
-    observers = _api.deprecated("3.4")(property(
-        lambda self: self._observers.callbacks['clicked']))
 
     def _clicked(self, event):
         if self.ignore(event) or event.button != 1 or event.inaxes != self.ax:

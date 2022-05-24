@@ -43,11 +43,8 @@ import logging
 from numbers import Number
 import re
 import sys
+import threading
 import time
-try:
-    import threading
-except ImportError:
-    import dummy_threading as threading
 
 from cycler import cycler
 import matplotlib
@@ -59,7 +56,7 @@ from matplotlib import _pylab_helpers, interactive
 from matplotlib import cbook
 from matplotlib import _docstring
 from matplotlib.backend_bases import FigureCanvasBase, MouseButton
-from matplotlib.figure import Figure, figaspect
+from matplotlib.figure import Figure, FigureBase, figaspect
 from matplotlib.gridspec import GridSpec, SubplotSpec
 from matplotlib import rcParams, rcParamsDefault, get_backend, rcParamsOrig
 from matplotlib.rcsetup import interactive_bk as _interactive_bk
@@ -206,12 +203,6 @@ def _get_backend_mod():
         # will (re)import pyplot and then call switch_backend if we need to
         # resolve the auto sentinel)
         switch_backend(dict.__getitem__(rcParams, "backend"))
-        # Just to be safe.  Interactive mode can be turned on without calling
-        # `plt.ion()` so register it again here.  This is safe because multiple
-        # calls to `install_repl_displayhook` are no-ops and the registered
-        # function respects `mpl.is_interactive()` to determine if it should
-        # trigger a draw.
-        install_repl_displayhook()
     return _backend_mod
 
 
@@ -269,15 +260,9 @@ def switch_backend(newbackend):
             rcParamsOrig["backend"] = "agg"
             return
 
-    # Backends are implemented as modules, but "inherit" default method
-    # implementations from backend_bases._Backend.  This is achieved by
-    # creating a "class" that inherits from backend_bases._Backend and whose
-    # body is filled with the module's globals.
-
-    backend_name = cbook._backend_module_name(newbackend)
-
-    class backend_mod(matplotlib.backend_bases._Backend):
-        locals().update(vars(importlib.import_module(backend_name)))
+    backend_mod = importlib.import_module(
+        cbook._backend_module_name(newbackend))
+    canvas_class = backend_mod.FigureCanvas
 
     required_framework = _get_required_interactive_framework(backend_mod)
     if required_framework is not None:
@@ -288,6 +273,36 @@ def switch_backend(newbackend):
                 "Cannot load backend {!r} which requires the {!r} interactive "
                 "framework, as {!r} is currently running".format(
                     newbackend, required_framework, current_framework))
+
+    # Load the new_figure_manager(), draw_if_interactive(), and show()
+    # functions from the backend.
+
+    # Classically, backends can directly export these functions.  This should
+    # keep working for backcompat.
+    new_figure_manager = getattr(backend_mod, "new_figure_manager", None)
+    # draw_if_interactive = getattr(backend_mod, "draw_if_interactive", None)
+    # show = getattr(backend_mod, "show", None)
+    # In that classical approach, backends are implemented as modules, but
+    # "inherit" default method implementations from backend_bases._Backend.
+    # This is achieved by creating a "class" that inherits from
+    # backend_bases._Backend and whose body is filled with the module globals.
+    class backend_mod(matplotlib.backend_bases._Backend):
+        locals().update(vars(backend_mod))
+
+    # However, the newer approach for defining new_figure_manager (and, in
+    # the future, draw_if_interactive and show) is to derive them from canvas
+    # methods.  In that case, also update backend_mod accordingly.
+    if new_figure_manager is None:
+        def new_figure_manager_given_figure(num, figure):
+            return canvas_class.new_manager(figure, num)
+
+        def new_figure_manager(num, *args, FigureClass=Figure, **kwargs):
+            fig = FigureClass(*args, **kwargs)
+            return new_figure_manager_given_figure(num, fig)
+
+        backend_mod.new_figure_manager_given_figure = \
+            new_figure_manager_given_figure
+        backend_mod.new_figure_manager = new_figure_manager
 
     _log.debug("Loaded backend %s version %s.",
                newbackend, backend_mod.backend_version)
@@ -301,6 +316,10 @@ def switch_backend(newbackend):
     # Need to keep a global reference to the backend for compatibility reasons.
     # See https://github.com/matplotlib/matplotlib/issues/6092
     matplotlib.backends.backend = newbackend
+
+    # make sure the repl display hook is installed in case we become
+    # interactive
+    install_repl_displayhook()
 
 
 def _warn_if_gui_out_of_main_thread():
@@ -690,7 +709,7 @@ def figure(num=None,  # autoincrement if None, else integer from 1-N
 
     Parameters
     ----------
-    num : int or str or `.Figure`, optional
+    num : int or str or `.Figure` or `.SubFigure`, optional
         A unique identifier for the figure.
 
         If a figure with that identifier already exists, this figure is made
@@ -702,7 +721,8 @@ def figure(num=None,  # autoincrement if None, else integer from 1-N
         will be used for the ``Figure.number`` attribute, otherwise, an
         auto-generated integer value is used (starting at 1 and incremented
         for each new figure). If *num* is a string, the figure label and the
-        window title is set to this value.
+        window title is set to this value.  If num is a ``SubFigure``, its
+        parent ``Figure`` is activated.
 
     figsize : (float, float), default: :rc:`figure.figsize`
         Width, height in inches.
@@ -753,11 +773,11 @@ def figure(num=None,  # autoincrement if None, else integer from 1-N
     `~matplotlib.rcParams` defines the default values, which can be modified
     in the matplotlibrc file.
     """
-    if isinstance(num, Figure):
+    if isinstance(num, FigureBase):
         if num.canvas.manager is None:
             raise ValueError("The passed figure is not managed by pyplot")
         _pylab_helpers.Gcf.set_active(num.canvas.manager)
-        return num
+        return num.figure
 
     allnums = get_fignums()
     next_num = max(allnums) + 1 if allnums else 1

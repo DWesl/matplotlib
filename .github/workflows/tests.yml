@@ -161,8 +161,8 @@ jobs:
 
           # Install dependencies from PyPI.
           python -m pip install --upgrade $PRE \
-            cycler fonttools kiwisolver numpy packaging pillow pyparsing \
-            python-dateutil setuptools-scm \
+            'contourpy>=1.0.1' cycler fonttools kiwisolver numpy packaging \
+            pillow pyparsing python-dateutil setuptools-scm \
             -r requirements/testing/all.txt \
             ${{ matrix.extra-requirements }}
 
@@ -223,6 +223,7 @@ jobs:
 
           # Turn all warnings to errors, except ignore the distutils deprecations and the find_spec warning
           cat >> pytest.ini << EOF
+          [pytest]
           filterwarnings =
               error
               ignore:.*distutils:DeprecationWarning

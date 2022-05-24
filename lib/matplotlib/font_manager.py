@@ -36,12 +36,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-try:
-    import threading
-    from threading import Timer
-except ImportError:
-    import dummy_threading as threading
-    from dummy_threading import Timer
+import threading
 
 import matplotlib as mpl
 from matplotlib import _api, _afm, cbook, ft2font, rcParams
@@ -860,14 +855,18 @@ class FontProperties:
         """
         if weight is None:
             weight = rcParams['font.weight']
+        if weight in weight_dict:
+            self._weight = weight
+            return
         try:
             weight = int(weight)
-            if weight < 0 or weight > 1000:
-                raise ValueError()
         except ValueError:
-            if weight not in weight_dict:
-                raise ValueError("weight is invalid")
-        self._weight = weight
+            pass
+        else:
+            if 0 <= weight <= 1000:
+                self._weight = weight
+                return
+        raise ValueError(f"{weight=} is invalid")
 
     def set_stretch(self, stretch):
         """
@@ -882,14 +881,18 @@ class FontProperties:
         """
         if stretch is None:
             stretch = rcParams['font.stretch']
+        if stretch in stretch_dict:
+            self._stretch = stretch
+            return
         try:
             stretch = int(stretch)
-            if stretch < 0 or stretch > 1000:
-                raise ValueError()
         except ValueError as err:
-            if stretch not in stretch_dict:
-                raise ValueError("stretch is invalid") from err
-        self._stretch = stretch
+            pass
+        else:
+            if 0 <= stretch <= 1000:
+                self._stretch = stretch
+                return
+        raise ValueError(f"{stretch=} is invalid")
 
     def set_size(self, size):
         """
@@ -1092,7 +1095,7 @@ class FontManager:
         self.ttflist = []
 
         # Delay the warning by 5s.
-        timer = Timer(5, lambda: _log.warning(
+        timer = threading.Timer(5, lambda: _log.warning(
             'Matplotlib is building the font cache; this may take a moment.'))
         timer.start()
         try:

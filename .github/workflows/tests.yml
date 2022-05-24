@@ -436,11 +436,15 @@ jobs:
           python -m pip install --no-deps -ve .
           unset CPPFLAGS
 
-      - name: Rebase DLLs
-        shell: dash.exe "{0}"
+      - name: Find DLLs to rebase
+        shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |
-          find {/usr,/usr/local/,~,~/.local}/{bin,lib/python3.?/site-packages} -name \*.exe -o -name \*.dll -print0 | xargs -0 /usr/bin/rebase --database
-          
+          find {/usr,/usr/local/,~,~/.local}/{bin,lib/python3.?/site-packages} -name \*.exe -o -name \*.dll -print >files_to_rebase.txt
+
+      - name: Rebase DLL list
+        run: |
+          rebase --database --filelist=files_to_rebase.txt
+
       - name: Check that Matplotlib imports
         shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |

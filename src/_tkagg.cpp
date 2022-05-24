@@ -229,13 +229,13 @@ bool load_tcl_tk(T lib)
 {
     // Try to fill Tcl/Tk global vars with function pointers.  Return whether
     // all of them have been filled.
-    if (void* ptr = dlsym(lib, "Tcl_SetVar")) {
+    if (Tcl_SetVar_t ptr = dlsym(lib, "Tcl_SetVar")) {
         TCL_SETVAR = (Tcl_SetVar_t)ptr;
     }
-    if (void* ptr = dlsym(lib, "Tk_FindPhoto")) {
+    if (Tk_FindPhoto_t ptr = dlsym(lib, "Tk_FindPhoto")) {
         TK_FIND_PHOTO = (Tk_FindPhoto_t)ptr;
     }
-    if (void* ptr = dlsym(lib, "Tk_PhotoPutBlock")) {
+    if (Tk_PhotoPutBlock_t ptr = dlsym(lib, "Tk_PhotoPutBlock")) {
         TK_PHOTO_PUT_BLOCK = (Tk_PhotoPutBlock_t)ptr;
     }
     return TCL_SETVAR && TK_FIND_PHOTO && TK_PHOTO_PUT_BLOCK;
@@ -255,7 +255,6 @@ void load_tkinter_funcs(void)
     HANDLE process = GetCurrentProcess();  // Pseudo-handle, doesn't need closing.
     HMODULE* modules = NULL;
     DWORD size;
-    bool tcl_ok = false, tk_ok = false;
     if (!EnumProcessModules(process, NULL, 0, &size)) {
         PyErr_SetFromWindowsErr(0);
         goto exit;

@@ -627,7 +627,9 @@ class FreeType(SetupPackage):
             env["CFLAGS"] = env.get("CFLAGS", "") + " -fPIC"
             if sys.platform == "cygwin":
                 sys.stderr.flush()
-                unix_cc_path = os.path.join(src_path, "builds", "unix", "unix-cc.in")
+                unix_cc_path = os.path.join(
+                    src_path, "builds", "unix", "unix-cc.in"
+                )
                 with open(unix_cc_path, "r") as in_file:
                     unix_cc_contents = in_file.read()
                 unix_cc_contents = unix_cc_contents.replace(
@@ -635,6 +637,19 @@ class FreeType(SetupPackage):
                     '-DFT_CONFIG_CONFIG_H="<freetype/config/ftconfig.h>"'
                 )
                 print("Fixed FT_CONFIG_CONFIG_H", flush=True)
+                del unix_cc_contents
+                subprocess.check_call(
+                    ["/usr/bin/autoconf-2.69", "--verbose", "--force"],
+                    env=env,
+                    cwd=os.path.join(src_path, "builds", "unix"),
+                )
+                print("Done autoconf", flush=True)
+                subprocess.check_call(
+                    ["/usr/bin/libtoolize", "--copy", "--force", "--install"],
+                    env=env,
+                    cwd=os.path.join(src_path, "builds", "unix"),
+                )
+                print("Done libtoolize", flush=True)
             configure = [
                 "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",

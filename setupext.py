@@ -627,27 +627,14 @@ class FreeType(SetupPackage):
             env["CFLAGS"] = env.get("CFLAGS", "") + " -fPIC"
             if sys.platform == "cygwin":
                 sys.stderr.flush()
-                print("Adding permissions", flush=True)
-                subprocess.check_call(
-                    ["/usr/bin/chmod", "a+rwx", "-R", "."],
-                    env=env, cwd=os.path.join(src_path, "builds", "unix")
+                unix_cc_path = os.path.join(src_path, "builds", "unix", "unix-cc.in")
+                with open(unix_cc_path, "r") as in_file:
+                    unix_cc_contents = in_file.read()
+                unix_cc_contents = unix_cc_contents.replace(
+                    '-DFT_CONFIG_CONFIG_H="<ftconfig.h>"',
+                    '-DFT_CONFIG_CONFIG_H="<freetype/config/ftconfig.h>"'
                 )
-                print("Running autoconf", flush=True)
-                subprocess.check_call(
-                    ["/usr/bin/autoconf-2.69", "--force"],
-                    env=env, cwd=os.path.join(src_path, "builds", "unix")
-                )
-                print("Running libtoolize", flush=True)
-                subprocess.check_call(
-                    ["/usr/bin/libtoolize", "--verbose", "--force", "--copy"],
-                    env=env, cwd=os.path.join(src_path, "builds", "unix")
-                )
-                # print("Ran autoconf", flush=True)
-                # subprocess.check_call(
-                #     ["/usr/bin/autoreconf", "--force", "--install"],
-                #     env=env, cwd=os.path.join(src_path, "builds", "unix")
-                # )
-                print("Updated autotools", flush=True)
+                print("Fixed FT_CONFIG_CONFIG_H", flush=True)
             configure = [
                 "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",

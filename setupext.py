@@ -644,8 +644,8 @@ class FreeType(SetupPackage):
                     cwd=os.path.join(src_path, "builds", "unix"),
                 )
                 print("Done autoconf", flush=True)
-                subprocess.check_call(
-                    ["/usr/bin/libtoolize", "--copy", "--force", "--install"],
+                subprocess.run(
+                    ["/usr/bin/libtoolize", "--copy", "--force", "--install", "--verbose"],
                     env=env,
                     cwd=os.path.join(src_path, "builds", "unix"),
                 )

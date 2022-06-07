@@ -618,20 +618,16 @@ class FreeType(SetupPackage):
             }
             env["CFLAGS"] = env.get("CFLAGS", "") + " -fPIC"
             if sys.platform == "cygwin":
-                # Re-run autoconf and automake
-                # This compiled on Cygwin back in the day, it should now
-                env["AUTOCONF"] = "/usr/bin/autoconf-2.69"
-                subprocess.check_call(
-                    ["chmod", "u+rw", "-R", "."],
-                    env=env,
-                    cwd=src_path
+                unix_cc_path = os.path.join(src_path, "builds", "unix", "unix-cc.in")
+                with open(unix_cc_path, "r") as in_file:
+                    unix_cc_contents = in_file.read()
+                unix_cc_contents = unix_cc_contents.replace(
+                    '-DFT_CONFIG_CONFIG_H="<ftconfig.h>"',
+                    '-DFT_CONFIG_CONFIG_H="<freetype/config/ftconfig.h>"'
                 )
-                subprocess.check_call(
-                    ["/bin/dash", "/usr/bin/autoreconf", "--force", "--install"],
-                    env=env,
-                    cwd=os.path.join(src_path, "builds", "unix")
-                )
-                # subprocess.check_call(["/bin/dash", "./autogen.sh"], env=env, cwd=src_path)
+                with open(unix_cc_path, "w") as out_file:
+                    out_file.write(unix_cc_contents)
+                del unix_cc_contents
             configure = [
                 "/bin/dash", "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",

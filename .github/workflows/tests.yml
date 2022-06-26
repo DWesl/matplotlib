@@ -307,7 +307,7 @@ jobs:
       - uses: cygwin/cygwin-install-action@v2
         with:
           packages: >-
-            ccache gcc-g++ gdb graphviz libcairo-devel libffi-devel
+            ccache gcc-g++ gdb git graphviz libcairo-devel libffi-devel
             libgeos-devel libQt5Core-devel pkgconf libglib2.0-devel
             texlive-collection-pictures
             texlive-collection-fontsrecommended

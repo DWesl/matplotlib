@@ -440,7 +440,7 @@ jobs:
       - name: Find DLLs to rebase
         shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |
-          find {/usr,/usr/local}/{bin,lib/python3.?/site-packages} /usr/lib/lapack -name \*.exe -o -name \*.dll -print >files_to_rebase.txt
+          find {/usr,/usr/local}/{bin,lib/python3.?/site-packages} /usr/lib/lapack . -name \*.exe -o -name \*.dll -print >files_to_rebase.txt
 
       - name: Rebase DLL list
         shell: ash.exe "{0}"

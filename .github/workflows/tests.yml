@@ -346,7 +346,9 @@ jobs:
             
       - name: Mark test repo safe
         shell: bash.exe -eo pipefail -o igncr "{0}"
-        run: git.exe config --global --add safe.directory /proc/cygdrive/d/a/matplotlib/matplotlib
+        run: |
+          git.exe config --global --add safe.directory /proc/cygdrive/d/a/matplotlib/matplotlib
+          git config --global --add safe.directory /cygdrive/d/a/matplotlib/matplotlib
 
       - name: Cache pip
         uses: actions/cache@v3

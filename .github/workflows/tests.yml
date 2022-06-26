@@ -304,6 +304,10 @@ jobs:
       - name: Fix line endings
         run: git config --global core.autocrlf input
 
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
       - uses: cygwin/cygwin-install-action@v2
         with:
           packages: >-
@@ -339,6 +343,10 @@ jobs:
             make autoconf autoconf2.5 automake automake1.10 libtool
             libqhull-devel libfreetype-devel
             libjpeg-devel libwebp-devel
+            
+      - name: Mark test repo safe
+        shell: bash.exe -eo pipefail -o igncr "{0}"
+        run: git.exe config --global --add safe.directory /proc/cygdrive/d/a/matplotlib/matplotlib
 
       - name: Cache pip
         uses: actions/cache@v3
@@ -372,10 +380,6 @@ jobs:
         run: |
           /usr/sbin/alternatives --set python /usr/bin/python3.${{ matrix.python-minor-version }}
           /usr/sbin/alternatives --set python3 /usr/bin/python3.${{ matrix.python-minor-version }}
-
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: Check missing files
         shell: bash.exe -eo pipefail -o igncr "{0}"

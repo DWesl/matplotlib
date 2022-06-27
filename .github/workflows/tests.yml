@@ -473,7 +473,9 @@ jobs:
           
       - name: List result image directory contents
         if: failure()
-        run: "dir .\\result_images"
+        run: |
+          dir ./result_images
+          Get-ACL ./result_images/* | Format-List
 
       - uses: actions/upload-artifact@v3
         if: failure()

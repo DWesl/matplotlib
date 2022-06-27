@@ -463,14 +463,15 @@ jobs:
           xvfb-run python -mpytest -raR -n auto \
             --maxfail=50 --timeout=300 --durations=25 \
             --cov-report=xml --cov=lib --log-level=DEBUG --color=yes
-            
+
       - name: Add permissions for image comparisons
         if: failure()
         shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |
+          chmod a+rwx -R ./result_images
           chmod a+rwx $(find ./result_images -type d)
-          chmod a+rw -R ./result_images
-          
+          chmod o+rw -R ./result_images
+
       - name: List result image directory contents
         if: failure()
         run: |

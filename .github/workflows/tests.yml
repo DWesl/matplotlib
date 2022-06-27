@@ -476,6 +476,7 @@ jobs:
         run: |
           dir ./result_images
           Get-ACL ./result_images/* | Format-List
+          Get-ACL ./result_images/test_agg/* | Format-List
 
       - uses: actions/upload-artifact@v3
         if: failure()

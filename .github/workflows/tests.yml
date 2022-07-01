@@ -351,8 +351,8 @@ jobs:
           git config --global --add safe.directory /cygdrive/d/a/matplotlib/matplotlib
           
       - name: Use dash for /bin/sh
-        shell: bash.exe -eo pipefail -o igncr "{0}"
-        run: cp /bin/dash /bin/sh
+        shell: dash.exe "{0}"
+        run: cp -f /bin/dash.exe /bin/sh.exe
 
       - name: Cache pip
         uses: actions/cache@v3

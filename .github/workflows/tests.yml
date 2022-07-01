@@ -437,7 +437,7 @@ jobs:
           backend=Agg
 
           [libs]
-          system_freetype = True
+          system_freetype = False
           system_qhull = True
           EOT
           cat mplsetup.cfg

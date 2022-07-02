@@ -354,7 +354,7 @@ jobs:
         shell: dash.exe "{0}"
         run: |
           mv /bin/sh.exe /bin/bash.exe
-          cp -f /bin/dash.exe /bin/sh.exe
+          cp -sf /bin/dash.exe /bin/sh.exe
 
       - name: Cache pip
         uses: actions/cache@v3

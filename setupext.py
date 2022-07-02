@@ -639,19 +639,19 @@ class FreeType(SetupPackage):
                 print("Fixed FT_CONFIG_CONFIG_H", flush=True)
                 del unix_cc_contents
                 subprocess.check_call(
-                    ["/usr/bin/autoconf-2.69", "--verbose", "--force"],
+                    ["/bin/dash", "/usr/bin/autoconf-2.69", "--verbose", "--force"],
                     env=env,
                     cwd=os.path.join(src_path, "builds", "unix"),
                 )
                 print("Done autoconf", flush=True)
                 subprocess.run(
-                    ["/usr/bin/libtoolize", "--copy", "--force", "--install", "--verbose"],
+                    ["/bin/dash", "/usr/bin/libtoolize", "--copy", "--force", "--install", "--verbose"],
                     env=env,
                     cwd=os.path.join(src_path, "builds", "unix"),
                 )
                 print("Done libtoolize", flush=True)
             configure = [
-                "./configure", "--with-zlib=no", "--with-bzip2=no",
+                "/bin/dash", "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",
                 "--disable-shared"
             ]

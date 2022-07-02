@@ -342,7 +342,7 @@ jobs:
             xorg-server-extra libxcb-icccm4 libxcb-image0
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
             libxcb-xinerama0
-            make autoconf autoconf2.5 automake automake1.10 libtool
+            make autoconf autoconf2.5 automake automake1.10 libtool m4
             libqhull-devel libfreetype-devel
             libjpeg-devel libwebp-devel
             

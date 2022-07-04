@@ -355,8 +355,10 @@ jobs:
       - name: Use dash for /bin/sh
         shell: dash.exe "{0}"
         run: |
-          mv /bin/sh.exe /bin/bash.exe
-          cp -sf /bin/dash.exe /bin/sh.exe
+          ls -l /bin/sh.exe /bin/bash.exe /bin/dash.exe
+          mv /bin/sh.exe /bin/bash.exe  || exit 1
+          cp -sf /bin/dash.exe /bin/sh.exe || exit 1
+          ls -l /bin/sh.exe /bin/bash.exe /bin/dash.exe
 
       - name: Cache pip
         uses: actions/cache@v3

@@ -618,8 +618,11 @@ class FreeType(SetupPackage):
                 **env,
             }
             configure_ac = Path(src_path, "builds/unix/configure.ac")
-            if ((src_path / "autogen.sh").exists()
-                    and not configure_ac.exists()):
+            if (
+                ((src_path / "autogen.sh").exists()
+                    and not configure_ac.exists())
+                or sys.platform == "cygwin"
+            ):
                 print(f"{configure_ac} does not exist. "
                       f"Using sh autogen.sh to generate.")
                 subprocess.check_call(
@@ -636,16 +639,10 @@ class FreeType(SetupPackage):
                     '-DFT_CONFIG_CONFIG_H="<ftconfig.h>"',
                     '-DFT_CONFIG_CONFIG_H="<freetype/config/ftconfig.h>"'
                 )
-                with open (unix_cc_path, "w") as out_file:
+                with open(unix_cc_path, "w") as out_file:
                     out_file.write(unix_cc_contents)
                 print("Fixed FT_CONFIG_CONFIG_H", flush=True)
                 del unix_cc_contents
-                subprocess.check_call(
-                    ["/bin/dash", "/usr/bin/autoreconf-2.69", "--install", "--force"],
-                    env=env,
-                    cwd=os.path.join(src_path, "builds", "unix"),
-                )
-                print("Done autoreconf", flush=True)
             configure = [
                 "/bin/dash", "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",

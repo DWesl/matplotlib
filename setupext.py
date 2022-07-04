@@ -636,20 +636,16 @@ class FreeType(SetupPackage):
                     '-DFT_CONFIG_CONFIG_H="<ftconfig.h>"',
                     '-DFT_CONFIG_CONFIG_H="<freetype/config/ftconfig.h>"'
                 )
+                with open (unix_cc_path, "w") as out_file:
+                    out_file.write(unix_cc_contents)
                 print("Fixed FT_CONFIG_CONFIG_H", flush=True)
                 del unix_cc_contents
                 subprocess.check_call(
-                    ["/bin/dash", "/usr/bin/autoconf-2.69", "--verbose", "--force"],
+                    ["/bin/dash", "/usr/bin/autoreconf-2.69", "--install", "--force"],
                     env=env,
                     cwd=os.path.join(src_path, "builds", "unix"),
                 )
-                print("Done autoconf", flush=True)
-                subprocess.run(
-                    ["/bin/dash", "/usr/bin/libtoolize", "--copy", "--force", "--install", "--verbose"],
-                    env=env,
-                    cwd=os.path.join(src_path, "builds", "unix"),
-                )
-                print("Done libtoolize", flush=True)
+                print("Done autoreconf", flush=True)
             configure = [
                 "/bin/dash", "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",

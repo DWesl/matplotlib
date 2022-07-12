@@ -476,7 +476,7 @@ jobs:
             --cov-report=xml --cov=lib --log-level=DEBUG --color=yes
 
       - name: Add permissions for image comparisons
-        if: failure() && steps.cygwin-run-pytest.conclusion == "failure"
+        if: failure() && steps.cygwin-run-pytest.conclusion == 'failure'
         shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |
           chmod a+rwx -R ./result_images
@@ -484,7 +484,7 @@ jobs:
           chmod o+rw -R ./result_images
 
       - name: List result image directory contents
-        if: failure() && steps.cygwin-run-pytest.conclusion == "failure"
+        if: failure() && steps.cygwin-run-pytest.conclusion == 'failure'
         run: |
           dir ./result_images
           Get-ACL ./result_images/* | Format-List

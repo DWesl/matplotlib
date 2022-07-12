@@ -75,6 +75,7 @@ class Collection(artist.Artist, cm.ScalarMappable):
     _edge_default = False
 
     @_docstring.interpd
+    @_api.make_keyword_only("3.6", name="edgecolors")
     def __init__(self,
                  edgecolors=None,
                  facecolors=None,
@@ -303,7 +304,7 @@ class Collection(artist.Artist, cm.ScalarMappable):
                 return bbox
         return transforms.Bbox.null()
 
-    def get_window_extent(self, renderer):
+    def get_window_extent(self, renderer=None):
         # TODO: check to ensure that this does not fail for
         # cases other than scatter plot legend
         return self.get_datalim(transforms.IdentityTransform())
@@ -1151,6 +1152,8 @@ class PathCollection(_CollectionWithSizes):
 
 
 class PolyCollection(_CollectionWithSizes):
+
+    @_api.make_keyword_only("3.6", name="closed")
     def __init__(self, verts, sizes=None, closed=True, **kwargs):
         """
         Parameters
@@ -1214,11 +1217,7 @@ class PolyCollection(_CollectionWithSizes):
         self._paths = []
         for xy in verts:
             if len(xy):
-                if isinstance(xy, np.ma.MaskedArray):
-                    xy = np.ma.concatenate([xy, xy[:1]])
-                else:
-                    xy = np.concatenate([xy, xy[:1]])
-                self._paths.append(mpath.Path(xy, closed=True))
+                self._paths.append(mpath.Path._create_closed(xy))
             else:
                 self._paths.append(mpath.Path(xy))
 
@@ -1229,12 +1228,8 @@ class PolyCollection(_CollectionWithSizes):
         if len(verts) != len(codes):
             raise ValueError("'codes' must be a 1D list or array "
                              "with the same length of 'verts'")
-        self._paths = []
-        for xy, cds in zip(verts, codes):
-            if len(xy):
-                self._paths.append(mpath.Path(xy, cds))
-            else:
-                self._paths.append(mpath.Path(xy))
+        self._paths = [mpath.Path(xy, cds) if len(xy) else mpath.Path(xy)
+                       for xy, cds in zip(verts, codes)]
         self.stale = True
 
 
@@ -1287,6 +1282,7 @@ class RegularPolyCollection(_CollectionWithSizes):
     _path_generator = mpath.Path.unit_regular_polygon
     _factor = np.pi ** (-1/2)
 
+    @_api.make_keyword_only("3.6", name="rotation")
     def __init__(self,
                  numsides,
                  rotation=0,
@@ -1423,14 +1419,10 @@ class LineCollection(Collection):
     def set_segments(self, segments):
         if segments is None:
             return
-        _segments = []
 
-        for seg in segments:
-            if not isinstance(seg, np.ma.MaskedArray):
-                seg = np.asarray(seg, float)
-            _segments.append(seg)
-
-        self._paths = [mpath.Path(_seg) for _seg in _segments]
+        self._paths = [mpath.Path(seg) if isinstance(seg, np.ma.MaskedArray)
+                       else mpath.Path(np.asarray(seg, float))
+                       for seg in segments]
         self.stale = True
 
     set_verts = set_segments  # for compatibility with PolyCollection
@@ -1503,6 +1495,7 @@ class EventCollection(LineCollection):
 
     _edge_default = True
 
+    @_api.make_keyword_only("3.6", name="lineoffset")
     def __init__(self,
                  positions,  # Cannot be None.
                  orientation='horizontal',
@@ -1698,6 +1691,7 @@ class CircleCollection(_CollectionWithSizes):
 class EllipseCollection(Collection):
     """A collection of ellipses, drawn using splines."""
 
+    @_api.make_keyword_only("3.6", name="units")
     def __init__(self, widths, heights, angles, units='points', **kwargs):
         """
         Parameters
@@ -1780,29 +1774,35 @@ class PatchCollection(Collection):
     """
     A generic collection of patches.
 
-    This makes it easier to assign a colormap to a heterogeneous
+    PatchCollection draws faster than a large number of equivalent individual
+    Patches. It also makes it easier to assign a colormap to a heterogeneous
     collection of patches.
-
-    This also may improve plotting speed, since PatchCollection will
-    draw faster than a large number of patches.
     """
 
+    @_api.make_keyword_only("3.6", name="match_original")
     def __init__(self, patches, match_original=False, **kwargs):
         """
-        *patches*
-            a sequence of Patch objects.  This list may include
+        Parameters
+        ----------
+        patches : list of `.Patch`
+            A sequence of Patch objects.  This list may include
             a heterogeneous assortment of different patch types.
 
-        *match_original*
+        match_original : bool, default: False
             If True, use the colors and linewidths of the original
             patches.  If False, new colors may be assigned by
             providing the standard collection arguments, facecolor,
             edgecolor, linewidths, norm or cmap.
 
-        If any of *edgecolors*, *facecolors*, *linewidths*, *antialiaseds* are
-        None, they default to their `.rcParams` patch setting, in sequence
-        form.
+        **kwargs
+            All other parameters are forwarded to `.Collection`.
 
+            If any of *edgecolors*, *facecolors*, *linewidths*, *antialiaseds*
+            are None, they default to their `.rcParams` patch setting, in
+            sequence form.
+
+        Notes
+        -----
         The use of `~matplotlib.cm.ScalarMappable` functionality is optional.
         If the `~matplotlib.cm.ScalarMappable` matrix ``_A`` has been set (via
         a call to `~.ScalarMappable.set_array`), at draw time a call to scalar

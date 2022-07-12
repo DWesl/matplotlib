@@ -787,7 +787,7 @@ class _ImageBase(martist.Artist, cm.ScalarMappable):
         """
         if s is None:
             s = "data"  # placeholder for maybe having rcParam
-        _api.check_in_list(['data', 'rgba'])
+        _api.check_in_list(['data', 'rgba'], s=s)
         self._interpolation_stage = s
         self.stale = True
 
@@ -902,6 +902,7 @@ class AxesImage(_ImageBase):
     **kwargs : `.Artist` properties
     """
 
+    @_api.make_keyword_only("3.6", name="cmap")
     def __init__(self, ax,
                  cmap=None,
                  norm=None,
@@ -1185,6 +1186,8 @@ class PcolorImage(AxesImage):
     This uses a variation of the original irregular image code,
     and it is used by pcolorfast for the corresponding grid type.
     """
+
+    @_api.make_keyword_only("3.6", name="cmap")
     def __init__(self, ax,
                  x=None,
                  y=None,
@@ -1336,6 +1339,7 @@ class FigureImage(_ImageBase):
 
     _interpolation = 'nearest'
 
+    @_api.make_keyword_only("3.6", name="cmap")
     def __init__(self, fig,
                  cmap=None,
                  norm=None,
@@ -1394,6 +1398,7 @@ class FigureImage(_ImageBase):
 class BboxImage(_ImageBase):
     """The Image class whose size is determined by the given bbox."""
 
+    @_api.make_keyword_only("3.6", name="cmap")
     def __init__(self, bbox,
                  cmap=None,
                  norm=None,
@@ -1425,7 +1430,7 @@ class BboxImage(_ImageBase):
 
     def get_window_extent(self, renderer=None):
         if renderer is None:
-            renderer = self.get_figure()._cachedRenderer
+            renderer = self.get_figure()._get_renderer()
 
         if isinstance(self.bbox, BboxBase):
             return self.bbox

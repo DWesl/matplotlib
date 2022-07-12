@@ -519,8 +519,8 @@ default: %(va)s
 
         Parameters
         ----------
-        rect : sequence of float
-            The dimensions [left, bottom, width, height] of the new Axes. All
+        rect : tuple (left, bottom, width, height)
+            The dimensions (left, bottom, width, height) of the new Axes. All
             quantities are in fractions of figure width and height.
 
         projection : {None, 'aitoff', 'hammer', 'lambert', 'mollweide', \
@@ -764,7 +764,8 @@ default: %(va)s
         return ax
 
     def subplots(self, nrows=1, ncols=1, *, sharex=False, sharey=False,
-                 squeeze=True, subplot_kw=None, gridspec_kw=None):
+                 squeeze=True, width_ratios=None, height_ratios=None,
+                 subplot_kw=None, gridspec_kw=None):
         """
         Add a set of subplots to this figure.
 
@@ -806,6 +807,18 @@ default: %(va)s
             - If False, no squeezing at all is done: the returned Axes object
               is always a 2D array containing Axes instances, even if it ends
               up being 1x1.
+
+        width_ratios : array-like of length *ncols*, optional
+            Defines the relative widths of the columns. Each column gets a
+            relative width of ``width_ratios[i] / sum(width_ratios)``.
+            If not given, all columns will have the same width.  Equivalent
+            to ``gridspec_kw={'width_ratios': [...]}``.
+
+        height_ratios : array-like of length *nrows*, optional
+            Defines the relative heights of the rows. Each row gets a
+            relative height of ``height_ratios[i] / sum(height_ratios)``.
+            If not given, all rows will have the same height. Equivalent
+            to ``gridspec_kw={'height_ratios': [...]}``.
 
         subplot_kw : dict, optional
             Dict with keywords passed to the `.Figure.add_subplot` call used to
@@ -871,6 +884,17 @@ default: %(va)s
         """
         if gridspec_kw is None:
             gridspec_kw = {}
+        if height_ratios is not None:
+            if 'height_ratios' in gridspec_kw:
+                raise ValueError("'height_ratios' must not be defined both as "
+                                 "parameter and as key in 'gridspec_kw'")
+            gridspec_kw['height_ratios'] = height_ratios
+        if width_ratios is not None:
+            if 'width_ratios' in gridspec_kw:
+                raise ValueError("'width_ratios' must not be defined both as "
+                                 "parameter and as key in 'gridspec_kw'")
+            gridspec_kw['width_ratios'] = width_ratios
+
         gs = self.add_gridspec(nrows, ncols, figure=self, **gridspec_kw)
         axs = gs.subplots(sharex=sharex, sharey=sharey, squeeze=squeeze,
                           subplot_kw=subplot_kw)
@@ -1509,8 +1533,7 @@ default: %(va)s
         self._axobservers.process("_axes_change_event", self)
         return a
 
-    @_docstring.dedent_interpd
-    def gca(self, **kwargs):
+    def gca(self):
         """
         Get the current Axes.
 
@@ -1519,25 +1542,9 @@ default: %(va)s
         Axes on a Figure, check whether ``figure.axes`` is empty.  To test
         whether there is currently a Figure on the pyplot figure stack, check
         whether `.pyplot.get_fignums()` is empty.)
-
-        The following kwargs are supported for ensuring the returned Axes
-        adheres to the given projection etc., and for Axes creation if
-        the active Axes does not exist:
-
-        %(Axes:kwdoc)s
         """
-        if kwargs:
-            _api.warn_deprecated(
-                "3.4",
-                message="Calling gca() with keyword arguments was deprecated "
-                "in Matplotlib %(since)s. Starting %(removal)s, gca() will "
-                "take no keyword arguments. The gca() function should only be "
-                "used to get the current axes, or if no axes exist, create "
-                "new axes with default keyword arguments. To create a new "
-                "axes with non-default arguments, use plt.axes() or "
-                "plt.subplot().")
         ax = self._axstack.current()
-        return ax if ax is not None else self.add_subplot(**kwargs)
+        return ax if ax is not None else self.add_subplot()
 
     def _gci(self):
         # Helper for `~matplotlib.pyplot.gci`.  Do not use elsewhere.
@@ -1618,7 +1625,7 @@ default: %(va)s
                 bbox_artists.extend(ax.get_default_bbox_extra_artists())
         return bbox_artists
 
-    def get_tightbbox(self, renderer, bbox_extra_artists=None):
+    def get_tightbbox(self, renderer=None, bbox_extra_artists=None):
         """
         Return a (tight) bounding box of the figure *in inches*.
 
@@ -1644,6 +1651,9 @@ default: %(va)s
         `.BboxBase`
             containing the bounding box (in figure inches).
         """
+
+        if renderer is None:
+            renderer = self.figure._get_renderer()
 
         bb = []
         if bbox_extra_artists is None:
@@ -1697,7 +1707,8 @@ default: %(va)s
             return [list(ln) for ln in layout.strip('\n').split('\n')]
 
     def subplot_mosaic(self, mosaic, *, sharex=False, sharey=False,
-                       subplot_kw=None, gridspec_kw=None, empty_sentinel='.'):
+                       width_ratios=None, height_ratios=None,
+                       empty_sentinel='.', subplot_kw=None, gridspec_kw=None):
         """
         Build a layout of Axes based on ASCII art or nested lists.
 
@@ -1753,6 +1764,18 @@ default: %(va)s
             units behave as for `subplots`.  If False, each subplot's x- or
             y-axis will be independent.
 
+        width_ratios : array-like of length *ncols*, optional
+            Defines the relative widths of the columns. Each column gets a
+            relative width of ``width_ratios[i] / sum(width_ratios)``.
+            If not given, all columns will have the same width.  Equivalent
+            to ``gridspec_kw={'width_ratios': [...]}``.
+
+        height_ratios : array-like of length *nrows*, optional
+            Defines the relative heights of the rows. Each row gets a
+            relative height of ``height_ratios[i] / sum(height_ratios)``.
+            If not given, all rows will have the same height. Equivalent
+            to ``gridspec_kw={'height_ratios': [...]}``.
+
         subplot_kw : dict, optional
             Dictionary with keywords passed to the `.Figure.add_subplot` call
             used to create each subplot.
@@ -1777,6 +1800,17 @@ default: %(va)s
         """
         subplot_kw = subplot_kw or {}
         gridspec_kw = gridspec_kw or {}
+        if height_ratios is not None:
+            if 'height_ratios' in gridspec_kw:
+                raise ValueError("'height_ratios' must not be defined both as "
+                                 "parameter and as key in 'gridspec_kw'")
+            gridspec_kw['height_ratios'] = height_ratios
+        if width_ratios is not None:
+            if 'width_ratios' in gridspec_kw:
+                raise ValueError("'width_ratios' must not be defined both as "
+                                 "parameter and as key in 'gridspec_kw'")
+            gridspec_kw['width_ratios'] = width_ratios
+
         # special-case string input
         if isinstance(mosaic, str):
             mosaic = self._normalize_grid_string(mosaic)
@@ -2060,6 +2094,26 @@ class SubFigure(FigureBase):
     def dpi(self, value):
         self._parent.dpi = value
 
+    def get_dpi(self):
+        """
+        Return the resolution of the parent figure in dots-per-inch as a float.
+        """
+        return self._parent.dpi
+
+    def set_dpi(self, val):
+        """
+        Set the resolution of parent figure in dots-per-inch.
+
+        Parameters
+        ----------
+        val : float
+        """
+        self._parent.dpi = val
+        self.stale = True
+
+    def _get_renderer(self):
+        return self._parent._get_renderer()
+
     def _redo_transform_rel_fig(self, bbox=None):
         """
         Make the transSubfigure bbox relative to Figure transform.
@@ -2245,7 +2299,7 @@ class Figure(FigureBase):
                 The use of this parameter is discouraged. Please use
                 ``layout='constrained'`` instead.
 
-        layout : {'constrained', 'tight', `.LayoutEngine`, None}, optional
+        layout : {'constrained', 'compressed', 'tight', `.LayoutEngine`, None}
             The layout mechanism for positioning of plot elements to avoid
             overlapping Axes decorations (labels, ticks, etc). Note that
             layout managers can have significant performance penalties.
@@ -2257,6 +2311,10 @@ class Figure(FigureBase):
 
               See :doc:`/tutorials/intermediate/constrainedlayout_guide`
               for examples.
+
+            - 'compressed': uses the same algorithm as 'constrained', but
+              removes extra space between fixed-aspect-ratio Axes.  Best for
+              simple grids of axes.
 
             - 'tight': Use the tight layout mechanism. This is a relatively
               simple algorithm that adjusts the subplot parameters so that
@@ -2388,11 +2446,13 @@ class Figure(FigureBase):
 
         Parameters
         ----------
-        layout : {'constrained', 'tight'} or `~.LayoutEngine`
-            'constrained' will use `~.ConstrainedLayoutEngine`, 'tight' will
-            use `~.TightLayoutEngine`.  Users and libraries can define their
-            own layout engines as well.
-        kwargs : dict
+        layout: {'constrained', 'compressed', 'tight'} or `~.LayoutEngine`
+            'constrained' will use `~.ConstrainedLayoutEngine`,
+            'compressed' will also use ConstrainedLayoutEngine, but with a
+            correction that attempts to make a good layout for fixed-aspect
+            ratio Axes. 'tight' uses `~.TightLayoutEngine`.  Users and
+            libraries can define their own layout engines as well.
+        kwargs: dict
             The keyword arguments are passed to the layout engine to set things
             like padding and margin sizes.  Only used if *layout* is a string.
         """
@@ -2408,6 +2468,9 @@ class Figure(FigureBase):
             new_layout_engine = TightLayoutEngine(**kwargs)
         elif layout == 'constrained':
             new_layout_engine = ConstrainedLayoutEngine(**kwargs)
+        elif layout == 'compressed':
+            new_layout_engine = ConstrainedLayoutEngine(compress=True,
+                                                        **kwargs)
         elif isinstance(layout, LayoutEngine):
             new_layout_engine = layout
         else:
@@ -2487,6 +2550,14 @@ class Figure(FigureBase):
         return self._axstack.as_list()
 
     get_axes = axes.fget
+
+    def _get_renderer(self):
+        if self._cachedRenderer is not None:
+            return self._cachedRenderer
+        elif hasattr(self.canvas, 'get_renderer'):
+            return self.canvas.get_renderer()
+        else:
+            return _get_renderer(self)
 
     def _get_dpi(self):
         return self._dpi
@@ -2636,7 +2707,7 @@ class Figure(FigureBase):
         hspace = info['hspace']
 
         if relative and (w_pad is not None or h_pad is not None):
-            renderer = _get_renderer(self)
+            renderer = self._get_renderer()
             dpi = renderer.dpi
             w_pad = w_pad * dpi / renderer.width
             h_pad = h_pad * dpi / renderer.height
@@ -2726,7 +2797,9 @@ class Figure(FigureBase):
             figsize = [x / dpi for x in (X.shape[1], X.shape[0])]
             self.set_size_inches(figsize, forward=True)
 
-        im = mimage.FigureImage(self, cmap, norm, xo, yo, origin, **kwargs)
+        im = mimage.FigureImage(self, cmap=cmap, norm=norm,
+                                offsetx=xo, offsety=yo,
+                                origin=origin, **kwargs)
         im.stale_callback = _stale_figure_callback
 
         im.set_array(X)

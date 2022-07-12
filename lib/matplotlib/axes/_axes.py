@@ -1083,13 +1083,14 @@ class Axes(_AxesBase):
         lines._internal_update(kwargs)
 
         if len(y) > 0:
-            minx = min(np.nanmin(xmin), np.nanmin(xmax))
-            maxx = max(np.nanmax(xmin), np.nanmax(xmax))
-            miny = np.nanmin(y)
-            maxy = np.nanmax(y)
-
+            # Extreme values of xmin/xmax/y.  Using masked_verts here handles
+            # the case of y being a masked *object* array (as can be generated
+            # e.g. by errorbar()), which would make nanmin/nanmax stumble.
+            minx = np.nanmin(masked_verts[..., 0])
+            maxx = np.nanmax(masked_verts[..., 0])
+            miny = np.nanmin(masked_verts[..., 1])
+            maxy = np.nanmax(masked_verts[..., 1])
             corners = (minx, miny), (maxx, maxy)
-
             self.update_datalim(corners)
             self._request_autoscale_view()
 
@@ -1162,11 +1163,13 @@ class Axes(_AxesBase):
         lines._internal_update(kwargs)
 
         if len(x) > 0:
-            minx = np.nanmin(x)
-            maxx = np.nanmax(x)
-            miny = min(np.nanmin(ymin), np.nanmin(ymax))
-            maxy = max(np.nanmax(ymin), np.nanmax(ymax))
-
+            # Extreme values of x/ymin/ymax.  Using masked_verts here handles
+            # the case of x being a masked *object* array (as can be generated
+            # e.g. by errorbar()), which would make nanmin/nanmax stumble.
+            minx = np.nanmin(masked_verts[..., 0])
+            maxx = np.nanmax(masked_verts[..., 0])
+            miny = np.nanmin(masked_verts[..., 1])
+            maxy = np.nanmax(masked_verts[..., 1])
             corners = (minx, miny), (maxx, maxy)
             self.update_datalim(corners)
             self._request_autoscale_view()
@@ -2336,7 +2339,7 @@ class Axes(_AxesBase):
         if orientation == 'vertical':
             if y is None:
                 y = 0
-        elif orientation == 'horizontal':
+        else:  # horizontal
             if x is None:
                 x = 0
 
@@ -2345,7 +2348,7 @@ class Axes(_AxesBase):
                 [("x", x), ("y", height)], kwargs, convert=False)
             if log:
                 self.set_yscale('log', nonpositive='clip')
-        elif orientation == 'horizontal':
+        else:  # horizontal
             self._process_unit_info(
                 [("x", width), ("y", y)], kwargs, convert=False)
             if log:
@@ -2374,7 +2377,7 @@ class Axes(_AxesBase):
         if orientation == 'vertical':
             tick_label_axis = self.xaxis
             tick_label_position = x
-        elif orientation == 'horizontal':
+        else:  # horizontal
             tick_label_axis = self.yaxis
             tick_label_position = y
 
@@ -2403,7 +2406,7 @@ class Axes(_AxesBase):
                                     f'and width ({width.dtype}) '
                                     f'are incompatible') from e
                 bottom = y
-            elif orientation == 'horizontal':
+            else:  # horizontal
                 try:
                     bottom = y - height / 2
                 except TypeError as e:
@@ -2411,7 +2414,7 @@ class Axes(_AxesBase):
                                     f'and height ({height.dtype}) '
                                     f'are incompatible') from e
                 left = x
-        elif align == 'edge':
+        else:  # edge
             left = x
             bottom = y
 
@@ -2431,7 +2434,7 @@ class Axes(_AxesBase):
             r.get_path()._interpolation_steps = 100
             if orientation == 'vertical':
                 r.sticky_edges.y.append(b)
-            elif orientation == 'horizontal':
+            else:  # horizontal
                 r.sticky_edges.x.append(l)
             self.add_patch(r)
             patches.append(r)
@@ -2442,7 +2445,7 @@ class Axes(_AxesBase):
                 ex = [l + 0.5 * w for l, w in zip(left, width)]
                 ey = [b + h for b, h in zip(bottom, height)]
 
-            elif orientation == 'horizontal':
+            else:  # horizontal
                 # using list comps rather than arrays to preserve unit info
                 ex = [l + w for l, w in zip(left, width)]
                 ey = [b + 0.5 * h for b, h in zip(bottom, height)]
@@ -2459,7 +2462,7 @@ class Axes(_AxesBase):
 
         if orientation == 'vertical':
             datavalues = height
-        elif orientation == 'horizontal':
+        else:  # horizontal
             datavalues = width
 
         bar_container = BarContainer(patches, errorbar, datavalues=datavalues,
@@ -2670,7 +2673,7 @@ class Axes(_AxesBase):
             if orientation == "vertical":
                 extrema = max(y0, y1) if dat >= 0 else min(y0, y1)
                 length = abs(y0 - y1)
-            elif orientation == "horizontal":
+            else:  # horizontal
                 extrema = max(x0, x1) if dat >= 0 else min(x0, x1)
                 length = abs(x0 - x1)
 
@@ -2678,38 +2681,39 @@ class Axes(_AxesBase):
                 endpt = extrema
             elif orientation == "vertical":
                 endpt = err[:, 1].max() if dat >= 0 else err[:, 1].min()
-            elif orientation == "horizontal":
+            else:  # horizontal
                 endpt = err[:, 0].max() if dat >= 0 else err[:, 0].min()
 
             if label_type == "center":
                 value = sign(dat) * length
-            elif label_type == "edge":
+            else:  # edge
                 value = extrema
 
             if label_type == "center":
                 xy = xc, yc
-            elif label_type == "edge" and orientation == "vertical":
-                xy = xc, endpt
-            elif label_type == "edge" and orientation == "horizontal":
-                xy = endpt, yc
+            else:  # edge
+                if orientation == "vertical":
+                    xy = xc, endpt
+                else:  # horizontal
+                    xy = endpt, yc
 
             if orientation == "vertical":
                 y_direction = -1 if y_inverted else 1
                 xytext = 0, y_direction * sign(dat) * padding
-            else:
+            else:  # horizontal
                 x_direction = -1 if x_inverted else 1
                 xytext = x_direction * sign(dat) * padding, 0
 
             if label_type == "center":
                 ha, va = "center", "center"
-            elif label_type == "edge":
+            else:  # edge
                 if orientation == "vertical":
                     ha = 'center'
                     if y_inverted:
                         va = 'top' if dat > 0 else 'bottom'  # also handles NaN
                     else:
                         va = 'top' if dat < 0 else 'bottom'  # also handles NaN
-                elif orientation == "horizontal":
+                else:  # horizontal
                     if x_inverted:
                         ha = 'right' if dat > 0 else 'left'  # also handles NaN
                     else:
@@ -2803,6 +2807,7 @@ class Axes(_AxesBase):
         return col
 
     @_preprocess_data()
+    @_api.delete_parameter("3.6", "use_line_collection")
     def stem(self, *args, linefmt=None, markerfmt=None, basefmt=None, bottom=0,
              label=None, use_line_collection=True, orientation='vertical'):
         """
@@ -2869,11 +2874,12 @@ class Axes(_AxesBase):
             The label to use for the stems in legends.
 
         use_line_collection : bool, default: True
+            *Deprecated since 3.6*
+
             If ``True``, store and plot the stem lines as a
             `~.collections.LineCollection` instead of individual lines, which
             significantly increases performance.  If ``False``, defaults to the
-            old behavior of using a list of `.Line2D` objects.  This parameter
-            may be deprecated in the future.
+            old behavior of using a list of `.Line2D` objects.
 
         data : indexable object, optional
             DATA_PARAMETER_PLACEHOLDER
@@ -2900,18 +2906,21 @@ class Axes(_AxesBase):
             heads, = args
             locs = np.arange(len(heads))
             args = ()
+        elif isinstance(args[1], str):
+            heads, *args = args
+            locs = np.arange(len(heads))
         else:
             locs, heads, *args = args
-        if args:
+        if len(args) > 1:
             _api.warn_deprecated(
                 "3.5",
-                message="Passing the linefmt parameter positionally is "
+                message="Passing the markerfmt parameter positionally is "
                         "deprecated since Matplotlib %(since)s; the "
                         "parameter will become keyword-only %(removal)s.")
 
         if orientation == 'vertical':
             locs, heads = self._process_unit_info([("x", locs), ("y", heads)])
-        else:
+        else:  # horizontal
             heads, locs = self._process_unit_info([("x", heads), ("y", locs)])
 
         # defaults for formats
@@ -3505,7 +3514,7 @@ class Axes(_AxesBase):
                     f"'{dep_axis}err' (shape: {np.shape(err)}) must be a "
                     f"scalar or a 1D or (2, n) array-like whose shape matches "
                     f"'{dep_axis}' (shape: {np.shape(dep)})") from None
-            res = np.zeros_like(err, dtype=bool)  # Default in case of nan
+            res = np.zeros(err.shape, dtype=bool)  # Default in case of nan
             if np.any(np.less(err, -err, out=res, where=(err == err))):
                 # like err<0, but also works for timedelta and nan.
                 raise ValueError(
@@ -4022,9 +4031,8 @@ class Axes(_AxesBase):
             return self.plot(*[xs, ys][maybe_swap], **kwargs)[0]
 
         def do_patch(xs, ys, **kwargs):
-            path = mpath.Path(
-                # Last (0, 0) vertex has a CLOSEPOLY code and is thus ignored.
-                np.column_stack([[*xs, 0], [*ys, 0]][maybe_swap]), closed=True)
+            path = mpath.Path._create_closed(
+                np.column_stack([xs, ys][maybe_swap]))
             patch = mpatches.PathPatch(path, **kwargs)
             self.add_artist(patch)
             return patch
@@ -5490,8 +5498,9 @@ default: :rc:`scatter.edgecolors`
         if aspect is None:
             aspect = rcParams['image.aspect']
         self.set_aspect(aspect)
-        im = mimage.AxesImage(self, cmap, norm, interpolation,
-                              origin, extent, filternorm=filternorm,
+        im = mimage.AxesImage(self, cmap=cmap, norm=norm,
+                              interpolation=interpolation, origin=origin,
+                              extent=extent, filternorm=filternorm,
                               filterrad=filterrad, resample=resample,
                               interpolation_stage=interpolation_stage,
                               **kwargs)
@@ -6275,7 +6284,7 @@ default: :rc:`scatter.edgecolors`
             extent = xl, xr, yb, yt = x[0], x[-1], y[0], y[-1]
             if style == "image":
                 im = mimage.AxesImage(
-                    self, cmap, norm,
+                    self, cmap=cmap, norm=norm,
                     data=C, alpha=alpha, extent=extent,
                     interpolation='nearest', origin='lower',
                     **kwargs)
@@ -7451,8 +7460,7 @@ such objects
         r"""
         Plot the coherence between *x* and *y*.
 
-        Plot the coherence between *x* and *y*.  Coherence is the
-        normalized cross spectral density:
+        Coherence is the normalized cross spectral density:
 
         .. math::
 
@@ -7797,7 +7805,7 @@ such objects
         self.title.set_y(1.05)
         if origin == "upper":
             self.xaxis.tick_top()
-        else:
+        else:  # lower
             self.xaxis.tick_bottom()
         self.xaxis.set_ticks_position('both')
         self.xaxis.set_major_locator(

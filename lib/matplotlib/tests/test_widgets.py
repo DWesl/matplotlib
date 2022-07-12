@@ -94,7 +94,7 @@ def test_rectangle_minspan(ax, spancoords, minspanx, x1, minspany, y1):
     assert ax._n_onselect == 1
 
     # Too small to create a selector. Should clear existing selector, and
-    # trigger onselect because there was a pre-exisiting selector
+    # trigger onselect because there was a preexisting selector
     click_and_drag(tool, start=(x0, y0), end=(x1, y1))
     assert not tool._selection_completed
     assert ax._n_onselect == 2
@@ -102,6 +102,19 @@ def test_rectangle_minspan(ax, spancoords, minspanx, x1, minspany, y1):
     assert ax._epress.ydata == y0
     assert ax._erelease.xdata == x1
     assert ax._erelease.ydata == y1
+
+
+def test_deprecation_selector_visible_attribute():
+    ax = get_ax()
+    tool = widgets.RectangleSelector(ax, lambda *args: None)
+
+    assert tool.get_visible()
+
+    with pytest.warns(
+        MatplotlibDeprecationWarning,
+            match="was deprecated in Matplotlib 3.6"):
+        tool.visible = False
+    assert not tool.get_visible()
 
 
 @pytest.mark.parametrize('drag_from_anywhere, new_center',
@@ -445,7 +458,7 @@ def test_rectangle_rotate(ax, selector_class):
             tool._selection_artist.rotation_point = 'unvalid_value'
 
 
-def test_rectange_add_remove_set(ax):
+def test_rectangle_add_remove_set(ax):
     tool = widgets.RectangleSelector(ax, onselect=noop, interactive=True)
     # Draw rectangle
     click_and_drag(tool, start=(100, 100), end=(130, 140))
@@ -789,18 +802,18 @@ def test_selector_clear_method(ax, selector):
         tool = widgets.RectangleSelector(ax, onselect=noop, interactive=True)
     click_and_drag(tool, start=(10, 10), end=(100, 120))
     assert tool._selection_completed
-    assert tool.visible
+    assert tool.get_visible()
     if selector == 'span':
         assert tool.extents == (10, 100)
 
     tool.clear()
     assert not tool._selection_completed
-    assert not tool.visible
+    assert not tool.get_visible()
 
     # Do another cycle of events to make sure we can
     click_and_drag(tool, start=(10, 10), end=(50, 120))
     assert tool._selection_completed
-    assert tool.visible
+    assert tool.get_visible()
     if selector == 'span':
         assert tool.extents == (10, 50)
 
@@ -1503,11 +1516,12 @@ def test_polygon_selector_box(ax):
     [(True, True), (True, False), (False, True)],
 )
 def test_MultiCursor(horizOn, vertOn):
-    fig, (ax1, ax2, ax3) = plt.subplots(3, sharex=True)
+    (ax1, ax3) = plt.figure().subplots(2, sharex=True)
+    ax2 = plt.figure().subplots()
 
     # useblit=false to avoid having to draw the figure to cache the renderer
     multi = widgets.MultiCursor(
-        fig.canvas, (ax1, ax2), useblit=False, horizOn=horizOn, vertOn=vertOn
+        None, (ax1, ax2), useblit=False, horizOn=horizOn, vertOn=vertOn
     )
 
     # Only two of the axes should have a line drawn on them.

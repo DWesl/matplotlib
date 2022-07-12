@@ -186,20 +186,28 @@ Required:
 - Ghostscript_ (>= 9.0, to render PDF files)
 - Inkscape_ (to render SVG files)
 
+  .. note::
+
+    When installing Inkscape on Windows, make sure that you select Add
+    Inkscape to system PATH, either for all users or current user, or the
+    tests will not find it.
+
 Optional:
 
 - pytest-cov_ (>=2.3.1) to collect coverage information
 - pytest-flake8_ to test coding standards using flake8_
 - pytest-timeout_ to limit runtime in case of stuck tests
 - pytest-xdist_ to run tests in parallel
+- pytest-xvfb_ to run tests without windows popping up (Linux)
 
 .. _pytest: http://doc.pytest.org/en/latest/
 .. _Ghostscript: https://www.ghostscript.com/
 .. _Inkscape: https://inkscape.org
 .. _pytest-cov: https://pytest-cov.readthedocs.io/en/latest/
 .. _pytest-flake8: https://pypi.org/project/pytest-flake8/
-.. _pytest-xdist: https://pypi.org/project/pytest-xdist/
 .. _pytest-timeout: https://pypi.org/project/pytest-timeout/
+.. _pytest-xdist: https://pypi.org/project/pytest-xdist/
+.. _pytest-xvfb: https://pypi.org/project/pytest-xvfb/
 .. _flake8: https://pypi.org/project/flake8/
 
 

@@ -63,7 +63,7 @@ class Axes3D(Axes):
         ----------
         fig : Figure
             The parent figure.
-        rect : (float, float, float, float)
+        rect : tuple (left, bottom, width, height), default: None.
             The ``(left, bottom, width, height)`` axes position.
         elev : float, default: 30
             The elevation angle in degrees rotates the camera above and below
@@ -387,6 +387,8 @@ class Axes3D(Axes):
 
     @martist.allow_rasterization
     def draw(self, renderer):
+        if not self.get_visible():
+            return
         self._unstale_viewLim()
 
         # draw the background patch
@@ -3096,7 +3098,7 @@ pivot='tail', normalize=False, **kwargs)
 
         return errlines, caplines, limmarks
 
-    def get_tightbbox(self, renderer, call_axes_locator=True,
+    def get_tightbbox(self, renderer=None, call_axes_locator=True,
                       bbox_extra_artists=None, *, for_layout_only=False):
         ret = super().get_tightbbox(renderer,
                                     call_axes_locator=call_axes_locator,

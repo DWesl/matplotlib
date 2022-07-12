@@ -20,7 +20,7 @@ The explicit object-oriented API is recommended for complex plots, though
 pyplot is still usually used to create the figure and often the axes in the
 figure. See `.pyplot.figure`, `.pyplot.subplots`, and
 `.pyplot.subplot_mosaic` to create figures, and
-:doc:`Axes API <../axes_api>` for the plotting methods on an Axes::
+:doc:`Axes API </api/axes_api>` for the plotting methods on an Axes::
 
     import numpy as np
     import matplotlib.pyplot as plt
@@ -274,13 +274,11 @@ def switch_backend(newbackend):
                 "framework, as {!r} is currently running".format(
                     newbackend, required_framework, current_framework))
 
-    # Load the new_figure_manager(), draw_if_interactive(), and show()
-    # functions from the backend.
+    # Load the new_figure_manager() and show() functions from the backend.
 
     # Classically, backends can directly export these functions.  This should
     # keep working for backcompat.
     new_figure_manager = getattr(backend_mod, "new_figure_manager", None)
-    # draw_if_interactive = getattr(backend_mod, "draw_if_interactive", None)
     # show = getattr(backend_mod, "show", None)
     # In that classical approach, backends are implemented as modules, but
     # "inherit" default method implementations from backend_bases._Backend.
@@ -290,8 +288,9 @@ def switch_backend(newbackend):
         locals().update(vars(backend_mod))
 
     # However, the newer approach for defining new_figure_manager (and, in
-    # the future, draw_if_interactive and show) is to derive them from canvas
-    # methods.  In that case, also update backend_mod accordingly.
+    # the future, show) is to derive them from canvas methods.  In that case,
+    # also update backend_mod accordingly; also, per-backend customization of
+    # draw_if_interactive is disabled.
     if new_figure_manager is None:
         def new_figure_manager_given_figure(num, figure):
             return canvas_class.new_manager(figure, num)
@@ -300,9 +299,16 @@ def switch_backend(newbackend):
             fig = FigureClass(*args, **kwargs)
             return new_figure_manager_given_figure(num, fig)
 
+        def draw_if_interactive():
+            if matplotlib.is_interactive():
+                manager = _pylab_helpers.Gcf.get_active()
+                if manager:
+                    manager.canvas.draw_idle()
+
         backend_mod.new_figure_manager_given_figure = \
             new_figure_manager_given_figure
         backend_mod.new_figure_manager = new_figure_manager
+        backend_mod.draw_if_interactive = draw_if_interactive
 
     _log.debug("Loaded backend %s version %s.",
                newbackend, backend_mod.backend_version)
@@ -762,9 +768,9 @@ def figure(num=None,  # autoincrement if None, else integer from 1-N
 
     Notes
     -----
-    Newly created figures will be passed to the
-    `~.backend_template.new_figure_manager` function provided by the current
-    backend, which will install a canvas and a manager on the figure.
+    Newly created figures are passed to the `~.FigureCanvasBase.new_manager`
+    method or the `new_figure_manager` function provided by the current
+    backend, which install a canvas and a manager on the figure.
 
     If you are creating many figures, make sure you explicitly call
     `.pyplot.close` on the figures you are not using, because this will
@@ -1192,7 +1198,7 @@ def subplot(*args, **kwargs):
 
     Notes
     -----
-    Creating a new Axes will delete any pre-existing Axes that
+    Creating a new Axes will delete any preexisting Axes that
     overlaps with it beyond sharing a boundary::
 
         import matplotlib.pyplot as plt
@@ -1323,6 +1329,7 @@ def subplot(*args, **kwargs):
 
 
 def subplots(nrows=1, ncols=1, *, sharex=False, sharey=False, squeeze=True,
+             width_ratios=None, height_ratios=None,
              subplot_kw=None, gridspec_kw=None, **fig_kw):
     """
     Create a figure and a set of subplots.
@@ -1367,6 +1374,18 @@ def subplots(nrows=1, ncols=1, *, sharex=False, sharey=False, squeeze=True,
         - If False, no squeezing at all is done: the returned Axes object is
           always a 2D array containing Axes instances, even if it ends up
           being 1x1.
+
+    width_ratios : array-like of length *ncols*, optional
+        Defines the relative widths of the columns. Each column gets a
+        relative width of ``width_ratios[i] / sum(width_ratios)``.
+        If not given, all columns will have the same width.  Equivalent
+        to ``gridspec_kw={'width_ratios': [...]}``.
+
+    height_ratios : array-like of length *nrows*, optional
+        Defines the relative heights of the rows. Each row gets a
+        relative height of ``height_ratios[i] / sum(height_ratios)``.
+        If not given, all rows will have the same height. Convenience
+        for ``gridspec_kw={'height_ratios': [...]}``.
 
     subplot_kw : dict, optional
         Dict with keywords passed to the
@@ -1458,13 +1477,14 @@ def subplots(nrows=1, ncols=1, *, sharex=False, sharey=False, squeeze=True,
     fig = figure(**fig_kw)
     axs = fig.subplots(nrows=nrows, ncols=ncols, sharex=sharex, sharey=sharey,
                        squeeze=squeeze, subplot_kw=subplot_kw,
-                       gridspec_kw=gridspec_kw)
+                       gridspec_kw=gridspec_kw, height_ratios=height_ratios,
+                       width_ratios=width_ratios)
     return fig, axs
 
 
 def subplot_mosaic(mosaic, *, sharex=False, sharey=False,
-                   subplot_kw=None, gridspec_kw=None, empty_sentinel='.',
-                   **fig_kw):
+                   width_ratios=None, height_ratios=None, empty_sentinel='.',
+                   subplot_kw=None, gridspec_kw=None, **fig_kw):
     """
     Build a layout of Axes based on ASCII art or nested lists.
 
@@ -1515,6 +1535,24 @@ def subplot_mosaic(mosaic, *, sharex=False, sharey=False,
         behave as for `subplots`.  If False, each subplot's x- or y-axis will
         be independent.
 
+    width_ratios : array-like of length *ncols*, optional
+        Defines the relative widths of the columns. Each column gets a
+        relative width of ``width_ratios[i] / sum(width_ratios)``.
+        If not given, all columns will have the same width.  Convenience
+        for ``gridspec_kw={'width_ratios': [...]}``.
+
+    height_ratios : array-like of length *nrows*, optional
+        Defines the relative heights of the rows. Each row gets a
+        relative height of ``height_ratios[i] / sum(height_ratios)``.
+        If not given, all rows will have the same height. Convenience
+        for ``gridspec_kw={'height_ratios': [...]}``.
+
+    empty_sentinel : object, optional
+        Entry in the layout to mean "leave this space empty".  Defaults
+        to ``'.'``. Note, if *layout* is a string, it is processed via
+        `inspect.cleandoc` to remove leading white space, which may
+        interfere with using white-space as the empty sentinel.
+
     subplot_kw : dict, optional
         Dictionary with keywords passed to the `.Figure.add_subplot` call
         used to create each subplot.
@@ -1522,12 +1560,6 @@ def subplot_mosaic(mosaic, *, sharex=False, sharey=False,
     gridspec_kw : dict, optional
         Dictionary with keywords passed to the `.GridSpec` constructor used
         to create the grid the subplots are placed on.
-
-    empty_sentinel : object, optional
-        Entry in the layout to mean "leave this space empty".  Defaults
-        to ``'.'``. Note, if *layout* is a string, it is processed via
-        `inspect.cleandoc` to remove leading white space, which may
-        interfere with using white-space as the empty sentinel.
 
     **fig_kw
         All additional keyword arguments are passed to the
@@ -1547,6 +1579,7 @@ def subplot_mosaic(mosaic, *, sharex=False, sharey=False,
     fig = figure(**fig_kw)
     ax_dict = fig.subplot_mosaic(
         mosaic, sharex=sharex, sharey=sharey,
+        height_ratios=height_ratios, width_ratios=width_ratios,
         subplot_kw=subplot_kw, gridspec_kw=gridspec_kw,
         empty_sentinel=empty_sentinel
     )
@@ -2024,11 +2057,9 @@ def thetagrids(angles=None, labels=None, fmt=None, **kwargs):
     return lines, labels
 
 
-## Plotting Info ##
-
-
-def plotting():
-    pass
+_NON_PLOT_COMMANDS = {
+    'connect', 'disconnect', 'get_current_fig_manager', 'ginput',
+    'new_figure_manager', 'waitforbuttonpress'}
 
 
 def get_plot_commands():
@@ -2038,67 +2069,14 @@ def get_plot_commands():
     # This works by searching for all functions in this module and removing
     # a few hard-coded exclusions, as well as all of the colormap-setting
     # functions, and anything marked as private with a preceding underscore.
-    exclude = {'colormaps', 'colors', 'connect', 'disconnect',
-               'get_plot_commands', 'get_current_fig_manager', 'ginput',
-               'plotting', 'waitforbuttonpress'}
-    exclude |= set(colormaps)
+    exclude = {'colormaps', 'colors', 'get_plot_commands',
+               *_NON_PLOT_COMMANDS, *colormaps}
     this_module = inspect.getmodule(get_plot_commands)
     return sorted(
         name for name, obj in globals().items()
         if not name.startswith('_') and name not in exclude
            and inspect.isfunction(obj)
            and inspect.getmodule(obj) is this_module)
-
-
-def _setup_pyplot_info_docstrings():
-    """
-    Setup the docstring of `plotting` and of the colormap-setting functions.
-
-    These must be done after the entire module is imported, so it is called
-    from the end of this module, which is generated by boilerplate.py.
-    """
-    commands = get_plot_commands()
-
-    first_sentence = re.compile(r"(?:\s*).+?\.(?:\s+|$)", flags=re.DOTALL)
-
-    # Collect the first sentence of the docstring for all of the
-    # plotting commands.
-    rows = []
-    max_name = len("Function")
-    max_summary = len("Description")
-    for name in commands:
-        doc = globals()[name].__doc__
-        summary = ''
-        if doc is not None:
-            match = first_sentence.match(doc)
-            if match is not None:
-                summary = inspect.cleandoc(match.group(0)).replace('\n', ' ')
-        name = '`%s`' % name
-        rows.append([name, summary])
-        max_name = max(max_name, len(name))
-        max_summary = max(max_summary, len(summary))
-
-    separator = '=' * max_name + ' ' + '=' * max_summary
-    lines = [
-        separator,
-        '{:{}} {:{}}'.format('Function', max_name, 'Description', max_summary),
-        separator,
-    ] + [
-        '{:{}} {:{}}'.format(name, max_name, summary, max_summary)
-        for name, summary in rows
-    ] + [
-        separator,
-    ]
-    plotting.__doc__ = '\n'.join(lines)
-
-    for cm_name in colormaps:
-        if cm_name in globals():
-            globals()[cm_name].__doc__ = f"""
-    Set the colormap to {cm_name!r}.
-
-    This changes the default colormap as well as the colormap of the current
-    image if there is one. See ``help(colormaps)`` for more information.
-    """
 
 
 ## Plotting part 1: manually generated functions and wrappers ##
@@ -2250,7 +2228,7 @@ def polar(*args, **kwargs):
 # requested, ignore rcParams['backend'] and force selection of a backend that
 # is compatible with the current running interactive framework.
 if (rcParams["backend_fallback"]
-        and dict.__getitem__(rcParams, "backend") in (
+        and rcParams._get_backend_or_none() in (
             set(_interactive_bk) - {'WebAgg', 'nbAgg'})
         and cbook._get_running_interactive_framework()):
     dict.__setitem__(rcParams, "backend", rcsetup._auto_backend_sentinel)
@@ -2277,8 +2255,8 @@ def figtext(x, y, s, fontdict=None, **kwargs):
 
 # Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
 @_copy_docstring_and_deprecators(Figure.gca)
-def gca(**kwargs):
-    return gcf().gca(**kwargs)
+def gca():
+    return gcf().gca()
 
 
 # Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
@@ -2892,8 +2870,9 @@ def stackplot(
 @_copy_docstring_and_deprecators(Axes.stem)
 def stem(
         *args, linefmt=None, markerfmt=None, basefmt=None, bottom=0,
-        label=None, use_line_collection=True, orientation='vertical',
-        data=None):
+        label=None,
+        use_line_collection=_api.deprecation._deprecated_parameter,
+        orientation='vertical', data=None):
     return gca().stem(
         *args, linefmt=linefmt, markerfmt=markerfmt, basefmt=basefmt,
         bottom=bottom, label=label,
@@ -3082,25 +3061,209 @@ def yscale(value, **kwargs):
 
 
 # Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
-def autumn(): set_cmap('autumn')
-def bone(): set_cmap('bone')
-def cool(): set_cmap('cool')
-def copper(): set_cmap('copper')
-def flag(): set_cmap('flag')
-def gray(): set_cmap('gray')
-def hot(): set_cmap('hot')
-def hsv(): set_cmap('hsv')
-def jet(): set_cmap('jet')
-def pink(): set_cmap('pink')
-def prism(): set_cmap('prism')
-def spring(): set_cmap('spring')
-def summer(): set_cmap('summer')
-def winter(): set_cmap('winter')
-def magma(): set_cmap('magma')
-def inferno(): set_cmap('inferno')
-def plasma(): set_cmap('plasma')
-def viridis(): set_cmap('viridis')
-def nipy_spectral(): set_cmap('nipy_spectral')
+def autumn():
+    """
+    Set the colormap to 'autumn'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('autumn')
 
 
-_setup_pyplot_info_docstrings()
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def bone():
+    """
+    Set the colormap to 'bone'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('bone')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def cool():
+    """
+    Set the colormap to 'cool'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('cool')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def copper():
+    """
+    Set the colormap to 'copper'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('copper')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def flag():
+    """
+    Set the colormap to 'flag'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('flag')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def gray():
+    """
+    Set the colormap to 'gray'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('gray')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def hot():
+    """
+    Set the colormap to 'hot'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('hot')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def hsv():
+    """
+    Set the colormap to 'hsv'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('hsv')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def jet():
+    """
+    Set the colormap to 'jet'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('jet')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def pink():
+    """
+    Set the colormap to 'pink'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('pink')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def prism():
+    """
+    Set the colormap to 'prism'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('prism')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def spring():
+    """
+    Set the colormap to 'spring'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('spring')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def summer():
+    """
+    Set the colormap to 'summer'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('summer')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def winter():
+    """
+    Set the colormap to 'winter'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('winter')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def magma():
+    """
+    Set the colormap to 'magma'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('magma')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def inferno():
+    """
+    Set the colormap to 'inferno'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('inferno')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def plasma():
+    """
+    Set the colormap to 'plasma'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('plasma')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def viridis():
+    """
+    Set the colormap to 'viridis'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('viridis')
+
+
+# Autogenerated by boilerplate.py.  Do not edit as changes will be lost.
+def nipy_spectral():
+    """
+    Set the colormap to 'nipy_spectral'.
+
+    This changes the default colormap as well as the colormap of the current
+    image if there is one. See ``help(colormaps)`` for more information.
+    """
+    set_cmap('nipy_spectral')

@@ -17,8 +17,16 @@ class TimerMac(_macosx.Timer, TimerBase):
     # completely implemented at the C-level (in _macosx.Timer)
 
 
-class FigureCanvasMac(_macosx.FigureCanvas, FigureCanvasAgg):
+class FigureCanvasMac(FigureCanvasAgg, _macosx.FigureCanvas, FigureCanvasBase):
     # docstring inherited
+
+    # Ideally this class would be `class FCMacAgg(FCAgg, FCMac)`
+    # (FC=FigureCanvas) where FCMac would be an ObjC-implemented mac-specific
+    # class also inheriting from FCBase (this is the approach with other GUI
+    # toolkits).  However, writing an extension type inheriting from a Python
+    # base class is slightly tricky (the extension type must be a heap type),
+    # and we can just as well lift the FCBase base up one level, keeping it *at
+    # the end* to have the right method resolution order.
 
     # Events such as button presses, mouse movements, and key presses
     # are handled in the C code and the base class methods
@@ -30,9 +38,7 @@ class FigureCanvasMac(_macosx.FigureCanvas, FigureCanvasAgg):
     manager_class = _api.classproperty(lambda cls: FigureManagerMac)
 
     def __init__(self, figure):
-        FigureCanvasBase.__init__(self, figure)
-        width, height = self.get_width_height()
-        _macosx.FigureCanvas.__init__(self, width, height)
+        super().__init__(figure=figure)
         self._draw_pending = False
         self._is_drawing = False
 
@@ -135,9 +141,6 @@ class NavigationToolbar2Mac(_macosx.NavigationToolbar2, NavigationToolbar2):
         # Need to keep a reference to the tool.
         _tool = SubplotTool(self.canvas.figure, toolfig)
         return canvas
-
-    def set_message(self, message):
-        _macosx.NavigationToolbar2.set_message(self, message.encode('utf-8'))
 
 
 class FigureManagerMac(_macosx.FigureManager, FigureManagerBase):

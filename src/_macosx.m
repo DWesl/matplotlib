@@ -1,8 +1,13 @@
+#if  ! __has_feature(objc_arc)
+#error This file must be compiled with ARC. Use -fobjc-arc flag (or convert project to ARC).
+#endif
+
 #define PY_SSIZE_T_CLEAN
 #include <Cocoa/Cocoa.h>
 #include <ApplicationServices/ApplicationServices.h>
 #include <sys/socket.h>
 #include <Python.h>
+#include "mplutils.h"
 
 #ifndef PYPY
 /* Remove this once Python is fixed: https://bugs.python.org/issue23237 */
@@ -294,6 +299,8 @@ typedef struct {
     View* view;
 } FigureCanvas;
 
+static PyTypeObject FigureCanvasType;
+
 static PyObject*
 FigureCanvas_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
@@ -307,14 +314,27 @@ FigureCanvas_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static int
 FigureCanvas_init(FigureCanvas *self, PyObject *args, PyObject *kwds)
 {
-    int width;
-    int height;
     if (!self->view) {
         PyErr_SetString(PyExc_RuntimeError, "NSView* is NULL");
         return -1;
     }
-    if (!PyArg_ParseTuple(args, "ii", &width, &height)) { return -1; }
-
+    PyObject *builtins = NULL,
+             *super_obj = NULL,
+             *super_init = NULL,
+             *init_res = NULL,
+             *wh = NULL;
+    // super(FigureCanvasMac, self).__init__(*args, **kwargs)
+    if (!(builtins = PyImport_AddModule("builtins"))  // borrowed.
+            || !(super_obj = PyObject_CallMethod(builtins, "super", "OO", &FigureCanvasType, self))
+            || !(super_init = PyObject_GetAttrString(super_obj, "__init__"))
+            || !(init_res = PyObject_Call(super_init, args, kwds))) {
+        goto exit;
+    }
+    int width, height;
+    if (!(wh = PyObject_CallMethod((PyObject*)self, "get_width_height", ""))
+            || !PyArg_ParseTuple(wh, "ii", &width, &height)) {
+        goto exit;
+    }
     NSRect rect = NSMakeRect(0.0, 0.0, width, height);
     self->view = [self->view initWithFrame: rect];
     self->view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -326,14 +346,19 @@ FigureCanvas_init(FigureCanvas *self, PyObject *args, PyObject *kwds)
                                       owner: self->view
                                    userInfo: nil]];
     [self->view setCanvas: (PyObject*)self];
-    return 0;
+
+exit:
+    Py_XDECREF(super_obj);
+    Py_XDECREF(super_init);
+    Py_XDECREF(init_res);
+    Py_XDECREF(wh);
+    return PyErr_Occurred() ? -1 : 0;
 }
 
 static void
 FigureCanvas_dealloc(FigureCanvas* self)
 {
     [self->view setCanvas: NULL];
-    [self->view release];
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -341,7 +366,7 @@ static PyObject*
 FigureCanvas_repr(FigureCanvas* self)
 {
     return PyUnicode_FromFormat("FigureCanvas object %p wrapping NSView %p",
-                               (void*)self, (void*)(self->view));
+                               (void*)self, (__bridge void*)(self->view));
 }
 
 static PyObject*
@@ -545,7 +570,6 @@ FigureManager_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     if (!window) { return NULL; }
     FigureManager *self = (FigureManager*)type->tp_alloc(type, 0);
     if (!self) {
-        [window release];
         return NULL;
     }
     self->window = window;
@@ -598,7 +622,7 @@ static PyObject*
 FigureManager_repr(FigureManager* self)
 {
     return PyUnicode_FromFormat("FigureManager object %p wrapping NSWindow %p",
-                               (void*) self, (void*)(self->window));
+                               (void*) self, (__bridge void*)(self->window));
 }
 
 static void
@@ -648,7 +672,7 @@ FigureManager_set_icon(PyObject* null, PyObject* args) {
             PyErr_SetString(PyExc_RuntimeError, "Could not convert to NSString*");
             return NULL;
         }
-        NSImage* image = [[[NSImage alloc] initByReferencingFile: ns_icon_path] autorelease];
+        NSImage* image = [[NSImage alloc] initByReferencingFile: ns_icon_path];
         if (!image) {
             PyErr_SetString(PyExc_RuntimeError, "Could not create NSImage*");
             return NULL;
@@ -677,9 +701,9 @@ FigureManager_set_window_title(FigureManager* self,
     if (!PyArg_ParseTuple(args, "s", &title)) {
         return NULL;
     }
-    NSString* ns_title = [[[NSString alloc]
-                           initWithCString: title
-                           encoding: NSUTF8StringEncoding] autorelease];
+    NSString* ns_title = [[NSString alloc]
+                          initWithCString: title
+                          encoding: NSUTF8StringEncoding];
     [self->window setTitle: ns_title];
     Py_RETURN_NONE;
 }
@@ -766,7 +790,7 @@ static PyTypeObject FigureManagerType = {
     NSButton* zoombutton;
 }
 - (NavigationToolbar2Handler*)initWithToolbar:(PyObject*)toolbar;
-- (void)installCallbacks:(SEL[7])actions forButtons:(NSButton*[7])buttons;
+- (void)installCallbacks:(SEL[7])actions forButtons:(NSButton*__strong [7])buttons;
 - (void)home:(id)sender;
 - (void)back:(id)sender;
 - (void)forward:(id)sender;
@@ -787,12 +811,12 @@ typedef struct {
 @implementation NavigationToolbar2Handler
 - (NavigationToolbar2Handler*)initWithToolbar:(PyObject*)theToolbar
 {
-    [self init];
+    self = [self init];
     toolbar = theToolbar;
     return self;
 }
 
-- (void)installCallbacks:(SEL[7])actions forButtons:(NSButton*[7])buttons
+- (void)installCallbacks:(SEL[7])actions forButtons:(NSButton*__strong [7])buttons
 {
     int i;
     for (i = 0; i < 7; i++) {
@@ -833,7 +857,6 @@ NavigationToolbar2_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     if (!handler) { return NULL; }
     NavigationToolbar2 *self = (NavigationToolbar2*)type->tp_alloc(type, 0);
     if (!self) {
-        [handler release];
         return NULL;
     }
     self->handler = handler;
@@ -925,8 +948,6 @@ NavigationToolbar2_init(NavigationToolbar2 *self, PyObject *args, PyObject *kwds
         [buttons[i] setImagePosition: NSImageOnly];
         [buttons[i] setToolTip: tooltip];
         [[window contentView] addSubview: buttons[i]];
-        [buttons[i] release];
-        [image release];
         rect.origin.x += rect.size.width + gap;
     }
 
@@ -934,22 +955,21 @@ NavigationToolbar2_init(NavigationToolbar2 *self, PyObject *args, PyObject *kwds
     [self->handler installCallbacks: actions forButtons: buttons];
 
     NSFont* font = [NSFont systemFontOfSize: 0.0];
-    rect.size.width = 300;
-    rect.size.height = 0;
-    rect.origin.x += height;
+    // rect.origin.x is now at the far right edge of the buttons
+    // we want the messagebox to take up the rest of the toolbar area
+    // Make it a zero-width box if we don't have enough room
+    rect.size.width = fmax(bounds.size.width - rect.origin.x, 0);
+    rect.origin.x = bounds.size.width - rect.size.width;
     NSTextView* messagebox = [[NSTextView alloc] initWithFrame: rect];
     messagebox.textContainer.maximumNumberOfLines = 2;
     messagebox.textContainer.lineBreakMode = NSLineBreakByTruncatingTail;
+    messagebox.alignment = NSTextAlignmentRight;
     [messagebox setFont: font];
     [messagebox setDrawsBackground: NO];
     [messagebox setSelectable: NO];
     /* if selectable, the messagebox can become first responder,
      * which is not supposed to happen */
-    rect = [messagebox frame];
-    rect.origin.y = 0.5 * (height - rect.size.height);
-    [messagebox setFrameOrigin: rect.origin];
     [[window contentView] addSubview: messagebox];
-    [messagebox release];
     [[window contentView] display];
 
     self->messagebox = messagebox;
@@ -959,7 +979,6 @@ NavigationToolbar2_init(NavigationToolbar2 *self, PyObject *args, PyObject *kwds
 static void
 NavigationToolbar2_dealloc(NavigationToolbar2 *self)
 {
-    [self->handler release];
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -974,7 +993,7 @@ NavigationToolbar2_set_message(NavigationToolbar2 *self, PyObject* args)
 {
     const char* message;
 
-    if (!PyArg_ParseTuple(args, "y", &message)) { return NULL; }
+    if (!PyArg_ParseTuple(args, "s", &message)) { return NULL; }
 
     NSTextView* messagebox = self->messagebox;
 
@@ -982,18 +1001,23 @@ NavigationToolbar2_set_message(NavigationToolbar2 *self, PyObject* args)
         NSString* text = [NSString stringWithUTF8String: message];
         [messagebox setString: text];
 
-        // Adjust width with the window size
+        // Adjust width and height with the window size and content
         NSRect rectWindow = [messagebox.superview frame];
         NSRect rect = [messagebox frame];
+        // Entire region to the right of the buttons
         rect.size.width = rectWindow.size.width - rect.origin.x;
         [messagebox setFrame: rect];
-
-        // Adjust height with the content size
+        // We want to control the vertical position of
+        // the rect by the content size to center it vertically
         [messagebox.layoutManager ensureLayoutForTextContainer: messagebox.textContainer];
-        NSRect contentSize = [messagebox.layoutManager usedRectForTextContainer: messagebox.textContainer];
-        rect = [messagebox frame];
-        rect.origin.y = 0.5 * (self->height - contentSize.size.height);
+        NSRect contentRect = [messagebox.layoutManager usedRectForTextContainer: messagebox.textContainer];
+        rect.origin.y = 0.5 * (self->height - contentRect.size.height);
+        rect.size.height = contentRect.size.height;
         [messagebox setFrame: rect];
+        // Disable cursorRects so that the cursor doesn't get updated by events
+        // in NSApp (like resizing TextViews), we want to handle the cursor
+        // changes from within MPL with set_cursor() ourselves
+        [[messagebox.superview window] disableCursorRects];
     }
 
     Py_RETURN_NONE;
@@ -1053,36 +1077,6 @@ static WindowServerConnectionManager *sharedWindowServerConnectionManager = nil;
         sharedWindowServerConnectionManager = [[super allocWithZone:NULL] init];
     }
     return sharedWindowServerConnectionManager;
-}
-
-+ (id)allocWithZone:(NSZone *)zone
-{
-    return [[self sharedManager] retain];
-}
-
-+ (id)copyWithZone:(NSZone *)zone
-{
-    return self;
-}
-
-+ (id)retain
-{
-    return self;
-}
-
-- (NSUInteger)retainCount
-{
-    return NSUIntegerMax;  //denotes an object that cannot be released
-}
-
-- (oneway void)release
-{
-    // Don't release a singleton object
-}
-
-- (id)autorelease
-{
-    return self;
 }
 
 - (void)launch:(NSNotification*)notification
@@ -1162,7 +1156,6 @@ static WindowServerConnectionManager *sharedWindowServerConnectionManager = nil;
      * content view of this window was increased during the call to addSubview,
      * and is decreased during the call to [super dealloc].
      */
-    [super dealloc];
 }
 @end
 
@@ -1184,7 +1177,6 @@ static WindowServerConnectionManager *sharedWindowServerConnectionManager = nil;
 {
     FigureCanvas* fc = (FigureCanvas*)canvas;
     if (fc) { fc->view = NULL; }
-    [super dealloc];
 }
 
 - (void)setCanvas: (PyObject*)newCanvas
@@ -1929,23 +1921,16 @@ static struct PyModuleDef moduledef = {
 
 PyObject* PyInit__macosx(void)
 {
-    if (PyType_Ready(&FigureCanvasType) < 0
-     || PyType_Ready(&FigureManagerType) < 0
-     || PyType_Ready(&NavigationToolbar2Type) < 0
-     || PyType_Ready(&TimerType) < 0)
-        return NULL;
-
-    PyObject *module = PyModule_Create(&moduledef);
-    if (!module) {
+    PyObject *m;
+    if (!(m = PyModule_Create(&moduledef))
+        || prepare_and_add_type(&FigureCanvasType, m)
+        || prepare_and_add_type(&FigureManagerType, m)
+        || prepare_and_add_type(&NavigationToolbar2Type, m)
+        || prepare_and_add_type(&TimerType, m)) {
+        Py_XDECREF(m);
         return NULL;
     }
-
-    PyModule_AddObject(module, "FigureCanvas", (PyObject*) &FigureCanvasType);
-    PyModule_AddObject(module, "FigureManager", (PyObject*) &FigureManagerType);
-    PyModule_AddObject(module, "NavigationToolbar2", (PyObject*) &NavigationToolbar2Type);
-    PyModule_AddObject(module, "Timer", (PyObject*) &TimerType);
-
-    return module;
+    return m;
 }
 
 #pragma GCC visibility pop

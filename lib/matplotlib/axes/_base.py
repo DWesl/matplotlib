@@ -1,4 +1,3 @@
-from collections import OrderedDict
 from collections.abc import MutableSequence
 from contextlib import ExitStack
 import functools
@@ -590,7 +589,7 @@ class _AxesBase(martist.Artist):
         fig : `~matplotlib.figure.Figure`
             The Axes is built in the `.Figure` *fig*.
 
-        rect : [left, bottom, width, height]
+        rect : tuple (left, bottom, width, height).
             The Axes is built in the rectangle *rect*. *rect* is in
             `.Figure` coordinates.
 
@@ -746,7 +745,7 @@ class _AxesBase(martist.Artist):
         Return the Axes bounding box in display space; *args* and *kwargs*
         are empty.
 
-        This bounding box does not include the spines, ticks, ticklables,
+        This bounding box does not include the spines, ticks, ticklabels,
         or other labels.  For a bounding box including these elements use
         `~matplotlib.axes.Axes.get_tightbbox`.
 
@@ -880,7 +879,7 @@ class _AxesBase(martist.Artist):
             # for cartesian projection, this is top spine
             return self.spines.top.get_spine_transform()
         else:
-            raise ValueError('unknown value for which')
+            raise ValueError(f'unknown value for which: {which!r}')
 
     def get_xaxis_text1_transform(self, pad_points):
         """
@@ -956,7 +955,7 @@ class _AxesBase(martist.Artist):
             # for cartesian projection, this is top spine
             return self.spines.right.get_spine_transform()
         else:
-            raise ValueError('unknown value for which')
+            raise ValueError(f'unknown value for which: {which!r}')
 
     def get_yaxis_text1_transform(self, pad_points):
         """
@@ -1160,8 +1159,8 @@ class _AxesBase(martist.Artist):
         -----
         Intended to be overridden by new projection types.
         """
-        return OrderedDict((side, mspines.Spine.linear_spine(self, side))
-                           for side in ['left', 'right', 'bottom', 'top'])
+        return {side: mspines.Spine.linear_spine(self, side)
+                for side in ['left', 'right', 'bottom', 'top']}
 
     def sharex(self, other):
         """
@@ -2163,7 +2162,7 @@ class _AxesBase(martist.Artist):
         Set the current image.
 
         This image will be the target of colormap functions like
-        `~.pyplot.viridis`, and other functions such as `~.pyplot.clim`.  The
+        ``pyplot.viridis``, and other functions such as `~.pyplot.clim`.  The
         current image is an attribute of the current Axes.
         """
         _api.check_isinstance(
@@ -2406,7 +2405,7 @@ class _AxesBase(martist.Artist):
         for curve, code in p.iter_bezier():
             # Get distance along the curve of any extrema
             _, dzeros = curve.axis_aligned_extrema()
-            # Calculate vertcies of start, end and any extrema in between
+            # Calculate vertices of start, end and any extrema in between
             vertices.append(curve([0, *dzeros, 1]))
 
         if len(vertices):
@@ -3174,15 +3173,13 @@ class _AxesBase(martist.Artist):
         --------
         get_axisbelow
         """
+        # Check that b is True, False or 'line'
         self._axisbelow = axisbelow = validate_axisbelow(b)
-        if axisbelow is True:
-            zorder = 0.5
-        elif axisbelow is False:
-            zorder = 2.5
-        elif axisbelow == "line":
-            zorder = 1.5
-        else:
-            raise ValueError("Unexpected axisbelow value")
+        zorder = {
+            True: 0.5,
+            'line': 1.5,
+            False: 2.5,
+        }[axisbelow]
         for axis in self._axis_map.values():
             axis.set_zorder(zorder)
         self.stale = True
@@ -3495,12 +3492,12 @@ class _AxesBase(martist.Artist):
                    else mpl.rcParams['xaxis.labellocation'])
             _api.check_in_list(('left', 'center', 'right'), loc=loc)
 
-            if loc == 'left':
-                kwargs.update(x=0, horizontalalignment='left')
-            elif loc == 'center':
-                kwargs.update(x=0.5, horizontalalignment='center')
-            elif loc == 'right':
-                kwargs.update(x=1, horizontalalignment='right')
+            x = {
+                'left': 0,
+                'center': 0.5,
+                'right': 1,
+            }[loc]
+            kwargs.update(x=x, horizontalalignment=loc)
 
         return self.xaxis.set_label_text(xlabel, fontdict, **kwargs)
 
@@ -3784,12 +3781,12 @@ class _AxesBase(martist.Artist):
                    else mpl.rcParams['yaxis.labellocation'])
             _api.check_in_list(('bottom', 'center', 'top'), loc=loc)
 
-            if loc == 'bottom':
-                kwargs.update(y=0, horizontalalignment='left')
-            elif loc == 'center':
-                kwargs.update(y=0.5, horizontalalignment='center')
-            elif loc == 'top':
-                kwargs.update(y=1, horizontalalignment='right')
+            y, ha = {
+                'bottom': (0, 'left'),
+                'center': (0.5, 'center'),
+                'top': (1, 'right')
+            }[loc]
+            kwargs.update(y=y, horizontalalignment=ha)
 
         return self.yaxis.set_label_text(ylabel, fontdict, **kwargs)
 
@@ -4441,7 +4438,7 @@ class _AxesBase(martist.Artist):
         return [a for a in artists if a.get_visible() and a.get_in_layout()
                 and (isinstance(a, noclip) or not a._fully_clipped_to_axes())]
 
-    def get_tightbbox(self, renderer, call_axes_locator=True,
+    def get_tightbbox(self, renderer=None, call_axes_locator=True,
                       bbox_extra_artists=None, *, for_layout_only=False):
         """
         Return the tight bounding box of the Axes, including axis and their
@@ -4485,6 +4482,8 @@ class _AxesBase(martist.Artist):
         """
 
         bb = []
+        if renderer is None:
+            renderer = self.figure._get_renderer()
 
         if not self.get_visible():
             return None
@@ -4603,9 +4602,9 @@ class _AxesBase(martist.Artist):
         return ax2
 
     def get_shared_x_axes(self):
-        """Return a reference to the shared axes Grouper object for x axes."""
-        return self._shared_axes["x"]
+        """Return an immutable view on the shared x-axes Grouper."""
+        return cbook.GrouperView(self._shared_axes["x"])
 
     def get_shared_y_axes(self):
-        """Return a reference to the shared axes Grouper object for y axes."""
-        return self._shared_axes["y"]
+        """Return an immutable view on the shared y-axes Grouper."""
+        return cbook.GrouperView(self._shared_axes["y"])

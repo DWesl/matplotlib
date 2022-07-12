@@ -812,12 +812,9 @@ class GraphicsContextBase:
         """
         Return the dash style as an (offset, dash-list) pair.
 
-        The dash list is a even-length list that gives the ink on, ink off in
-        points.  See p. 107 of to PostScript `blue book`_ for more info.
+        See `.set_dashes` for details.
 
         Default value is (None, None).
-
-        .. _blue book: https://www-cdf.fnal.gov/offline/PostScript/BLUEBOOK.PDF
         """
         return self._dashes
 
@@ -908,16 +905,18 @@ class GraphicsContextBase:
         Parameters
         ----------
         dash_offset : float
-            The offset (usually 0).
+            Distance, in points, into the dash pattern at which to
+            start the pattern. It is usually set to 0.
         dash_list : array-like or None
             The on-off sequence as points.  None specifies a solid line. All
             values must otherwise be non-negative (:math:`\\ge 0`).
 
         Notes
         -----
-        See p. 107 of to PostScript `blue book`_ for more info.
-
-        .. _blue book: https://www-cdf.fnal.gov/offline/PostScript/BLUEBOOK.PDF
+        See p. 666 of the PostScript
+        `Language Reference
+        <https://www.adobe.com/jp/print/postscript/pdfs/PLRM.pdf>`_
+        for more info.
         """
         if dash_list is not None:
             dl = np.asarray(dash_list)
@@ -1634,6 +1633,7 @@ class FigureCanvasBase:
         # We don't want to scale up the figure DPI more than once.
         figure._original_dpi = figure.dpi
         self._device_pixel_ratio = 1
+        super().__init__()  # Typically the GUI widget init (if any).
 
     callbacks = property(lambda self: self.figure._canvas_callbacks)
     button_pick_id = property(lambda self: self.figure._button_pick_id)
@@ -1704,7 +1704,6 @@ class FigureCanvasBase:
     def blit(self, bbox=None):
         """Blit the canvas in bbox (default entire canvas)."""
 
-    @_api.deprecated("3.6", alternative="FigureManagerBase.resize")
     def resize(self, w, h):
         """
         UNUSED: Set the canvas size in pixels.
@@ -1712,6 +1711,13 @@ class FigureCanvasBase:
         Certain backends may implement a similar method internally, but this is
         not a requirement of, nor is it used by, Matplotlib itself.
         """
+        # The entire method is actually deprecated, but we allow pass-through
+        # to a parent class to support e.g. QWidget.resize.
+        if hasattr(super(), "resize"):
+            return super().resize(w, h)
+        else:
+            _api.warn_deprecated("3.6", name="resize", obj_type="method",
+                                 alternative="FigureManagerBase.resize")
 
     def draw_event(self, renderer):
         """Pass a `DrawEvent` to all functions connected to ``draw_event``."""

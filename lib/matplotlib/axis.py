@@ -244,6 +244,7 @@ class Tick(martist.Artist):
         self.gridline.set_clip_path(clippath, transform)
         self.stale = True
 
+    @_api.deprecated("3.6")
     def get_pad_pixels(self):
         return self.figure.dpi * self._base_pad / 72
 
@@ -643,6 +644,7 @@ class Axis(martist.Artist):
         return "{}({},{})".format(
             type(self).__name__, *self.axes.transAxes.transform((0, 0)))
 
+    @_api.make_keyword_only("3.6", name="pickradius")
     def __init__(self, axes, pickradius=15):
         """
         Parameters
@@ -1141,6 +1143,7 @@ class Axis(martist.Artist):
             return
         a.set_figure(self.figure)
 
+    @_api.deprecated("3.6")
     def get_ticklabel_extents(self, renderer):
         """Get the extents of the tick labels on either side of the axes."""
         ticks_to_draw = self._update_ticks()
@@ -1198,14 +1201,16 @@ class Axis(martist.Artist):
 
         return ticks_to_draw
 
-    def _get_ticklabel_bboxes(self, ticks, renderer):
+    def _get_ticklabel_bboxes(self, ticks, renderer=None):
         """Return lists of bboxes for ticks' label1's and label2's."""
+        if renderer is None:
+            renderer = self.figure._get_renderer()
         return ([tick.label1.get_window_extent(renderer)
                  for tick in ticks if tick.label1.get_visible()],
                 [tick.label2.get_window_extent(renderer)
                  for tick in ticks if tick.label2.get_visible()])
 
-    def get_tightbbox(self, renderer, *, for_layout_only=False):
+    def get_tightbbox(self, renderer=None, *, for_layout_only=False):
         """
         Return a bounding box that encloses the axis. It only accounts
         tick labels, axis label, and offsetText.
@@ -1217,7 +1222,8 @@ class Axis(martist.Artist):
         """
         if not self.get_visible():
             return
-
+        if renderer is None:
+            renderer = self.figure._get_renderer()
         ticks_to_draw = self._update_ticks()
 
         self._update_label_position(renderer)
@@ -1312,6 +1318,7 @@ class Axis(martist.Artist):
 
     def get_majorticklabels(self):
         """Return this Axis' major tick labels, as a list of `~.text.Text`."""
+        self._update_ticks()
         ticks = self.get_major_ticks()
         labels1 = [tick.label1 for tick in ticks if tick.label1.get_visible()]
         labels2 = [tick.label2 for tick in ticks if tick.label2.get_visible()]
@@ -1319,6 +1326,7 @@ class Axis(martist.Artist):
 
     def get_minorticklabels(self):
         """Return this Axis' minor tick labels, as a list of `~.text.Text`."""
+        self._update_ticks()
         ticks = self.get_minor_ticks()
         labels1 = [tick.label1 for tick in ticks if tick.label1.get_visible()]
         labels2 = [tick.label2 for tick in ticks if tick.label2.get_visible()]
@@ -1341,13 +1349,6 @@ class Axis(martist.Artist):
         Returns
         -------
         list of `~matplotlib.text.Text`
-
-        Notes
-        -----
-        The tick label strings are not populated until a ``draw`` method has
-        been called.
-
-        See also: `~.pyplot.draw` and `~.FigureCanvasBase.draw`.
         """
         if which is not None:
             if which == 'minor':
@@ -1791,7 +1792,7 @@ class Axis(martist.Artist):
         """
         self.pickradius = pickradius
 
-    # Helper for set_ticklabels. Defining it here makes it pickleable.
+    # Helper for set_ticklabels. Defining it here makes it picklable.
     @staticmethod
     def _format_with_dict(tickd, x, pos):
         return tickd.get(x, "")
@@ -2255,6 +2256,7 @@ class XAxis(Axis):
             y = top + self.OFFSETTEXTPAD * self.figure.dpi / 72
         self.offsetText.set_position((x, y))
 
+    @_api.deprecated("3.6")
     def get_text_heights(self, renderer):
         """
         Return how much space should be reserved for text above and below the
@@ -2512,6 +2514,7 @@ class YAxis(Axis):
         self.offsetText.set_position((x, y))
         self.stale = True
 
+    @_api.deprecated("3.6")
     def get_text_widths(self, renderer):
         bbox, bbox2 = self.get_ticklabel_extents(renderer)
         # MGDTODO: Need a better way to get the pad

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import sysconfig
 import tarfile
+from tempfile import TemporaryDirectory
 import textwrap
 import urllib.request
 
@@ -709,7 +710,23 @@ class FreeType(SetupPackage):
                 f.write(vcxproj)
 
             cc = get_ccompiler()
-            cc.initialize()  # Get msbuild in the %PATH% of cc.spawn.
+            cc.initialize()
+            # On setuptools versions that use "local" distutils,
+            # ``cc.spawn(["msbuild", ...])`` no longer manages to locate the
+            # right executable, even though they are correctly on the PATH,
+            # because only the env kwarg to Popen() is updated, and not
+            # os.environ["PATH"]. Instead, use shutil.which to walk the PATH
+            # and get absolute executable paths.
+            with TemporaryDirectory() as tmpdir:
+                dest = Path(tmpdir, "path")
+                cc.spawn([
+                    sys.executable, "-c",
+                    "import pathlib, shutil, sys\n"
+                    "dest = pathlib.Path(sys.argv[1])\n"
+                    "dest.write_text(shutil.which('msbuild'))\n",
+                    str(dest),
+                ])
+                msbuild_path = dest.read_text()
             # Freetype 2.10.0+ support static builds.
             msbuild_config = (
                 "Release Static"
@@ -717,7 +734,7 @@ class FreeType(SetupPackage):
                 else "Release"
             )
 
-            cc.spawn(["msbuild", str(sln_path),
+            cc.spawn([msbuild_path, str(sln_path),
                       "/t:Clean;Build",
                       f"/p:Configuration={msbuild_config};"
                       f"Platform={msbuild_platform}"])
@@ -780,7 +797,7 @@ class BackendMacOSX(OptionalPackage):
             'matplotlib.backends._macosx', [
                 'src/_macosx.m'
             ])
-        ext.extra_compile_args.extend(['-Werror'])
+        ext.extra_compile_args.extend(['-Werror', '-fobjc-arc'])
         ext.extra_link_args.extend(['-framework', 'Cocoa'])
         if platform.python_implementation().lower() == 'pypy':
             ext.extra_compile_args.append('-DPYPY=1')

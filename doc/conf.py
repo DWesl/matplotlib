@@ -5,7 +5,7 @@
 # dir.
 #
 # The contents of this file are pickled, so don't put values in the namespace
-# that aren't pickleable (module imports are okay, they're removed
+# that aren't picklable (module imports are okay, they're removed
 # automatically).
 #
 # All configuration values have a default value; values that are commented out
@@ -72,14 +72,12 @@ extensions = [
     'sphinxext.skip_deprecated',
     'sphinxext.redirect_from',
     'sphinx_copybutton',
-    'sphinx_panels',
+    'sphinx_design',
 ]
 
 exclude_patterns = [
     'api/prev_api_changes/api_changes_*/*',
 ]
-
-panels_add_bootstrap_css = False
 
 
 def _check_dependencies():
@@ -331,17 +329,22 @@ html_theme = "mpl_sphinx_theme"
 html_logo = "_static/logo2.svg"
 html_theme_options = {
     "native_site": True,
-    "logo_link": "index",
     # collapse_navigation in pydata-sphinx-theme is slow, so skipped for local
     # and CI builds https://github.com/pydata/pydata-sphinx-theme/pull/386
     "collapse_navigation": not is_release_build,
     "show_prev_next": False,
     "switcher": {
         "json_url": "https://matplotlib.org/devdocs/_static/switcher.json",
-        "url_template": "https://matplotlib.org/{version}/",
-        "version_match": version,
+        "version_match": (
+            # The start version to show. This must be in switcher.json.
+            # We either go to 'stable' or to 'devdocs'
+            'stable' if matplotlib.__version_info__.releaselevel == 'final'
+            else 'devdocs')
     },
-    "navbar_end": ["version-switcher", "mpl_icon_links"]
+    "logo": {"link": "index",
+             "image_light": "images/logo2.svg",
+             "image_dark": "images/logo_dark.svg"},
+    "navbar_end": ["version-switcher", "mpl_icon_links", "theme-switcher"]
 }
 include_analytics = is_release_build
 if include_analytics:
@@ -557,8 +560,6 @@ texinfo_documents = [
 # numpydoc config
 
 numpydoc_show_class_members = False
-
-html4_writer = True
 
 inheritance_node_attrs = dict(fontsize=16)
 

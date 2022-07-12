@@ -1039,7 +1039,7 @@ def test_color_logic(pcfunc):
     # Define 2 reference "colors" here for multiple use.
     face_default = mcolors.to_rgba_array(pc._get_default_facecolor())
     mapped = pc.get_cmap()(pc.norm((z.ravel())))
-    # Github issue #1302:
+    # GitHub issue #1302:
     assert mcolors.same_color(pc.get_edgecolor(), 'red')
     # Check setting attributes after initialization:
     pc = pcfunc(z)
@@ -1156,9 +1156,9 @@ def test_set_offsets_late():
 
 def test_set_offset_transform():
     skew = mtransforms.Affine2D().skew(2, 2)
-    init = mcollections.Collection([], offset_transform=skew)
+    init = mcollections.Collection(offset_transform=skew)
 
-    late = mcollections.Collection([])
+    late = mcollections.Collection()
     late.set_offset_transform(skew)
 
     assert skew == init.get_offset_transform() == late.get_offset_transform()

@@ -5,7 +5,7 @@ Classes for including text in a figure.
 import functools
 import logging
 import math
-import numbers
+from numbers import Real
 import weakref
 
 import numpy as np
@@ -128,6 +128,7 @@ class Text(Artist):
     def __repr__(self):
         return "Text(%s, %s, %s)" % (self._x, self._y, repr(self._text))
 
+    @_api.make_keyword_only("3.6", name="color")
     def __init__(self,
                  x=0, y=0, text='',
                  color=None,           # defaults to rc params
@@ -180,7 +181,7 @@ class Text(Artist):
         self._renderer = None
         if linespacing is None:
             linespacing = 1.2  # Maybe use rcParam later.
-        self._linespacing = linespacing
+        self.set_linespacing(linespacing)
         self.set_rotation_mode(rotation_mode)
         self.update(kwargs)
 
@@ -905,7 +906,7 @@ class Text(Artist):
         if renderer is not None:
             self._renderer = renderer
         if self._renderer is None:
-            self._renderer = self.figure._cachedRenderer
+            self._renderer = self.figure._get_renderer()
         if self._renderer is None:
             raise RuntimeError(
                 "Cannot get window extent of text w/o renderer. You likely "
@@ -999,6 +1000,7 @@ class Text(Artist):
         ----------
         spacing : float (multiple of font size)
         """
+        _api.check_isinstance(Real, spacing=spacing)
         self._linespacing = spacing
         self.stale = True
 
@@ -1185,7 +1187,7 @@ class Text(Artist):
             The rotation angle in degrees in mathematically positive direction
             (counterclockwise). 'horizontal' equals 0, 'vertical' equals 90.
         """
-        if isinstance(s, numbers.Real):
+        if isinstance(s, Real):
             self._rotation = float(s) % 360
         elif cbook._str_equal(s, 'horizontal') or s is None:
             self._rotation = 0.
@@ -1503,13 +1505,13 @@ class _AnnotationBase:
             ref_x, ref_y = xy0
             if unit == "points":
                 # dots per points
-                dpp = self.figure.get_dpi() / 72.
+                dpp = self.figure.dpi / 72
                 tr = Affine2D().scale(dpp)
             elif unit == "pixels":
                 tr = Affine2D()
             elif unit == "fontsize":
                 fontsize = self.get_size()
-                dpp = fontsize * self.figure.get_dpi() / 72.
+                dpp = fontsize * self.figure.dpi / 72
                 tr = Affine2D().scale(dpp)
             elif unit == "fraction":
                 w, h = bbox0.size
@@ -1567,8 +1569,10 @@ class _AnnotationBase:
         x, y = self.xy
         return self._get_xy(renderer, x, y, self.xycoords)
 
-    def _check_xy(self, renderer):
+    def _check_xy(self, renderer=None):
         """Check whether the annotation at *xy_pixel* should be drawn."""
+        if renderer is None:
+            renderer = self.figure._get_renderer()
         b = self.get_annotation_clip()
         if b or (b is None and self.xycoords == "data"):
             # check if self.xy is inside the axes.
@@ -1999,7 +2003,7 @@ class Annotation(Text, _AnnotationBase):
         if renderer is not None:
             self._renderer = renderer
         if self._renderer is None:
-            self._renderer = self.figure._cachedRenderer
+            self._renderer = self.figure._get_renderer()
         if self._renderer is None:
             raise RuntimeError('Cannot get window extent w/o renderer')
 
@@ -2013,7 +2017,7 @@ class Annotation(Text, _AnnotationBase):
 
         return Bbox.union(bboxes)
 
-    def get_tightbbox(self, renderer):
+    def get_tightbbox(self, renderer=None):
         # docstring inherited
         if not self._check_xy(renderer):
             return Bbox.null()

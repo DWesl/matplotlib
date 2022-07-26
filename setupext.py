@@ -629,23 +629,8 @@ class FreeType(SetupPackage):
                 subprocess.check_call(
                     ["sh", "./autogen.sh"], env=env, cwd=src_path)
             env["CFLAGS"] = env.get("CFLAGS", "") + " -fPIC"
-            if sys.platform == "cygwin":
-                sys.stderr.flush()
-                unix_cc_path = os.path.join(
-                    src_path, "builds", "unix", "unix-cc.in"
-                )
-                with open(unix_cc_path, "r") as in_file:
-                    unix_cc_contents = in_file.read()
-                unix_cc_contents = unix_cc_contents.replace(
-                    '-DFT_CONFIG_CONFIG_H="<ftconfig.h>"',
-                    '-DFT_CONFIG_CONFIG_H="<freetype/config/ftconfig.h>"'
-                )
-                with open(unix_cc_path, "w") as out_file:
-                    out_file.write(unix_cc_contents)
-                print("Fixed FT_CONFIG_CONFIG_H", flush=True)
-                del unix_cc_contents
             configure = [
-                "/bin/dash", "./configure", "--with-zlib=no", "--with-bzip2=no",
+                "./configure", "--with-zlib=no", "--with-bzip2=no",
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",
                 "--disable-shared"
             ]

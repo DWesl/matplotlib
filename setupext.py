@@ -619,11 +619,8 @@ class FreeType(SetupPackage):
                 **env,
             }
             configure_ac = Path(src_path, "builds/unix/configure.ac")
-            if (
-                ((src_path / "autogen.sh").exists()
-                    and not configure_ac.exists())
-                or sys.platform == "cygwin"
-            ):
+            if ((src_path / "autogen.sh").exists()
+                    and not configure_ac.exists()):
                 print(f"{configure_ac} does not exist. "
                       f"Using sh autogen.sh to generate.")
                 subprocess.check_call(

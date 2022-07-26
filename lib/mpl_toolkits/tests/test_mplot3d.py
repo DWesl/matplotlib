@@ -34,6 +34,19 @@ def test_aspect_equal_error():
         ax.set_aspect('equal')
 
 
+def test_axes3d_repr():
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    ax.set_label('label')
+    ax.set_title('title')
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+    assert repr(ax) == (
+        "<Axes3DSubplot: label='label', "
+        "title={'center': 'title'}, xlabel='x', ylabel='y', zlabel='z'>")
+
+
 @mpl3d_image_comparison(['bar3d.png'])
 def test_bar3d():
     fig = plt.figure()
@@ -1011,11 +1024,13 @@ def test_lines_dists():
 def test_lines_dists_nowarning():
     # Smoke test to see that no RuntimeWarning is emitted when two first
     # arguments are the same, see GH#22624
-    p0 = (10, 30)
-    p1 = (20, 150)
-    proj3d._line2d_seg_dist(p0, p0, p1)
+    p0 = (10, 30, 50)
+    p1 = (10, 30, 20)
+    p2 = (20, 150)
+    proj3d._line2d_seg_dist(p0, p0, p2)
+    proj3d._line2d_seg_dist(p0, p1, p2)
     p0 = np.array(p0)
-    proj3d._line2d_seg_dist(p0, p0, p1)
+    proj3d._line2d_seg_dist(p0, p0, p2)
 
 
 def test_autoscale():

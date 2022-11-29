@@ -427,7 +427,7 @@ jobs:
         shell: bash.exe -eo pipefail -o igncr "{0}"
         env:
           AUTOCONF: /usr/bin/autoconf-2.69
-          MAKE: make -d --trace --print-directory
+          MAKEFLAGS: dw
         run: |
           ccache -s
           git describe

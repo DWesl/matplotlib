@@ -33,12 +33,13 @@ universal function.
 # tick labels (`~matplotlib.axes.Axes.set_xticklabels`),
 # otherwise they would become out of sync. The locations are just
 # the ascending integer numbers, while the ticklabels are the labels to show.
-# Finally we can label the data itself by creating a `~matplotlib.text.Text`
+# Finally, we can label the data itself by creating a `~matplotlib.text.Text`
 # within each cell showing the value of that cell.
 
 
 import numpy as np
 import matplotlib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 # sphinx_gallery_thumbnail_number = 2
 
@@ -272,7 +273,7 @@ norm = matplotlib.colors.BoundaryNorm(np.linspace(-3.5, 3.5, 8), 7)
 fmt = matplotlib.ticker.FuncFormatter(lambda x, pos: qrates[::-1][norm(x)])
 
 im, _ = heatmap(data, y, x, ax=ax3,
-                cmap=plt.get_cmap("PiYG", 7), norm=norm,
+                cmap=mpl.colormaps["PiYG"].resampled(7), norm=norm,
                 cbar_kw=dict(ticks=np.arange(-3, 4), format=fmt),
                 cbarlabel="Quality Rating")
 

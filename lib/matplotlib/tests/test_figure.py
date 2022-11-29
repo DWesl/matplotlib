@@ -13,12 +13,13 @@ import pytest
 from PIL import Image
 
 import matplotlib as mpl
-from matplotlib import gridspec, rcParams
+from matplotlib import gridspec
 from matplotlib.testing.decorators import image_comparison, check_figures_equal
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure, FigureBase
 from matplotlib.layout_engine import (ConstrainedLayoutEngine,
-                                      TightLayoutEngine)
+                                      TightLayoutEngine,
+                                      PlaceHolderLayoutEngine)
 from matplotlib.ticker import AutoMinorLocator, FixedFormatter, ScalarFormatter
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -261,7 +262,7 @@ def test_add_subplot_invalid():
         fig.add_subplot(2, 2.0, 1)
     _, ax = plt.subplots()
     with pytest.raises(ValueError,
-                       match='The Subplot must have been created in the '
+                       match='The Axes must have been created in the '
                              'present figure'):
         fig.add_subplot(ax)
 
@@ -298,7 +299,7 @@ def test_alpha():
 
 def test_too_many_figures():
     with pytest.warns(RuntimeWarning):
-        for i in range(rcParams['figure.max_open_warning'] + 1):
+        for i in range(mpl.rcParams['figure.max_open_warning'] + 1):
             plt.figure()
 
 
@@ -315,7 +316,7 @@ def test_iterability_axes_argument():
 
     class MyAxes(Axes):
         def __init__(self, *args, myclass=None, **kwargs):
-            return Axes.__init__(self, *args, **kwargs)
+            Axes.__init__(self, *args, **kwargs)
 
     class MyClass:
 
@@ -581,10 +582,18 @@ def test_invalid_layouts():
     fig.colorbar(pc)
     with pytest.raises(RuntimeError, match='Colorbar layout of new layout'):
         fig.set_layout_engine("tight")
+    fig.set_layout_engine("none")
+    with pytest.raises(RuntimeError, match='Colorbar layout of new layout'):
+        fig.set_layout_engine("tight")
 
     fig, ax = plt.subplots(layout="tight")
     pc = ax.pcolormesh(np.random.randn(2, 2))
     fig.colorbar(pc)
+    with pytest.raises(RuntimeError, match='Colorbar layout of new layout'):
+        fig.set_layout_engine("constrained")
+    fig.set_layout_engine("none")
+    assert isinstance(fig.get_layout_engine(), PlaceHolderLayoutEngine)
+
     with pytest.raises(RuntimeError, match='Colorbar layout of new layout'):
         fig.set_layout_engine("constrained")
 
@@ -769,7 +778,7 @@ def test_clf_not_redefined():
 @mpl.style.context('mpl20')
 def test_picking_does_not_stale():
     fig, ax = plt.subplots()
-    col = ax.scatter([0], [0], [1000], picker=True)
+    ax.scatter([0], [0], [1000], picker=True)
     fig.canvas.draw()
     assert not fig.stale
 
@@ -912,6 +921,26 @@ class TestSubplotMosaic:
 
         fig_ref.subplot_mosaic([["F"], [x]])
         fig_test.subplot_mosaic([["F"], [xt]])
+
+    def test_nested_width_ratios(self):
+        x = [["A", [["B"],
+                    ["C"]]]]
+        width_ratios = [2, 1]
+
+        fig, axd = plt.subplot_mosaic(x, width_ratios=width_ratios)
+
+        assert axd["A"].get_gridspec().get_width_ratios() == width_ratios
+        assert axd["B"].get_gridspec().get_width_ratios() != width_ratios
+
+    def test_nested_height_ratios(self):
+        x = [["A", [["B"],
+                    ["C"]]], ["D", "D"]]
+        height_ratios = [1, 2]
+
+        fig, axd = plt.subplot_mosaic(x, height_ratios=height_ratios)
+
+        assert axd["D"].get_gridspec().get_height_ratios() == height_ratios
+        assert axd["B"].get_gridspec().get_height_ratios() != height_ratios
 
     @check_figures_equal(extensions=["png"])
     @pytest.mark.parametrize(
@@ -1121,7 +1150,7 @@ def test_subfigure_dpi():
 
 
 @image_comparison(['test_subfigure_ss.png'], style='mpl20',
-                  savefig_kwarg={'facecolor': 'teal'})
+                  savefig_kwarg={'facecolor': 'teal'}, tol=0.02)
 def test_subfigure_ss():
     # test assigning the subfigure via subplotspec
     np.random.seed(19680801)
@@ -1358,6 +1387,20 @@ def test_kwargs_pass():
     assert sub_fig.get_label() == 'sub figure'
 
 
+@check_figures_equal(extensions=["png"])
+def test_rcparams(fig_test, fig_ref):
+    fig_ref.supxlabel("xlabel", weight='bold', size=15)
+    fig_ref.supylabel("ylabel", weight='bold', size=15)
+    fig_ref.suptitle("Title", weight='light', size=20)
+    with mpl.rc_context({'figure.labelweight': 'bold',
+                         'figure.labelsize': 15,
+                         'figure.titleweight': 'light',
+                         'figure.titlesize': 20}):
+        fig_test.supxlabel("xlabel")
+        fig_test.supylabel("ylabel")
+        fig_test.suptitle("Title")
+
+
 def test_deepcopy():
     fig1, ax = plt.subplots()
     ax.plot([0, 1], [2, 3])
@@ -1389,3 +1432,11 @@ def test_unpickle_with_device_pixel_ratio():
     assert fig.dpi == 42*7
     fig2 = pickle.loads(pickle.dumps(fig))
     assert fig2.dpi == 42
+
+
+def test_gridspec_no_mutate_input():
+    gs = {'left': .1}
+    gs_orig = dict(gs)
+    plt.subplots(1, 2, width_ratios=[1, 2], gridspec_kw=gs)
+    assert gs == gs_orig
+    plt.subplot_mosaic('AB', width_ratios=[1, 2], gridspec_kw=gs)

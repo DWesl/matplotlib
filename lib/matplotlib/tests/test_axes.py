@@ -1,3 +1,4 @@
+import contextlib
 from collections import namedtuple
 import datetime
 from decimal import Decimal
@@ -66,7 +67,7 @@ def test_repr():
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     assert repr(ax) == (
-        "<AxesSubplot: "
+        "<Axes: "
         "label='label', title={'center': 'title'}, xlabel='x', ylabel='y'>")
 
 
@@ -486,10 +487,63 @@ def test_inverted_cla():
     plt.close(fig)
 
 
-def test_cla_not_redefined():
+def test_subclass_clear_cla():
+    # Ensure that subclasses of Axes call cla/clear correctly.
+    # Note, we cannot use mocking here as we want to be sure that the
+    # superclass fallback does not recurse.
+
+    with pytest.warns(PendingDeprecationWarning,
+                      match='Overriding `Axes.cla`'):
+        class ClaAxes(Axes):
+            def cla(self):
+                nonlocal called
+                called = True
+
+    with pytest.warns(PendingDeprecationWarning,
+                      match='Overriding `Axes.cla`'):
+        class ClaSuperAxes(Axes):
+            def cla(self):
+                nonlocal called
+                called = True
+                super().cla()
+
+    class SubClaAxes(ClaAxes):
+        pass
+
+    class ClearAxes(Axes):
+        def clear(self):
+            nonlocal called
+            called = True
+
+    class ClearSuperAxes(Axes):
+        def clear(self):
+            nonlocal called
+            called = True
+            super().clear()
+
+    class SubClearAxes(ClearAxes):
+        pass
+
+    fig = Figure()
+    for axes_class in [ClaAxes, ClaSuperAxes, SubClaAxes,
+                       ClearAxes, ClearSuperAxes, SubClearAxes]:
+        called = False
+        ax = axes_class(fig, [0, 0, 1, 1])
+        # Axes.__init__ has already called clear (which aliases to cla or is in
+        # the subclass).
+        assert called
+
+        called = False
+        ax.cla()
+        assert called
+
+
+def test_cla_not_redefined_internally():
     for klass in Axes.__subclasses__():
-        # check that cla does not get redefined in our Axes subclasses
-        assert 'cla' not in klass.__dict__
+        # Check that cla does not get redefined in our Axes subclasses, except
+        # for in the above test function.
+        if 'test_subclass_clear_cla' not in klass.__qualname__:
+            assert 'cla' not in klass.__dict__
 
 
 @check_figures_equal(extensions=["png"])
@@ -843,11 +897,15 @@ def test_hexbin_extent():
     ax.hexbin("x", "y", extent=[.1, .3, .6, .7], data=data)
 
 
-@image_comparison(['hexbin_empty.png'], remove_text=True)
+@image_comparison(['hexbin_empty.png', 'hexbin_empty.png'], remove_text=True)
 def test_hexbin_empty():
     # From #3886: creating hexbin from empty dataset raises ValueError
-    ax = plt.gca()
+    fig, ax = plt.subplots()
     ax.hexbin([], [])
+    fig, ax = plt.subplots()
+    # From #23922: creating hexbin with log scaling from empty
+    # dataset raises ValueError
+    ax.hexbin([], [], bins='log')
 
 
 def test_hexbin_pickable():
@@ -1220,7 +1278,7 @@ def test_pcolormesh_alpha():
     Qy = Y + np.sin(X)
     Z = np.hypot(X, Y) / 5
     Z = (Z - Z.min()) / Z.ptp()
-    vir = plt.get_cmap("viridis", 16)
+    vir = mpl.colormaps["viridis"].resampled(16)
     # make another colormap with varying alpha
     colors = vir(np.arange(16))
     colors[:, 3] = 0.5 + 0.5*np.sin(np.arange(16))
@@ -1442,7 +1500,7 @@ def test_arc_ellipse():
         [np.cos(rtheta), -np.sin(rtheta)],
         [np.sin(rtheta), np.cos(rtheta)]])
 
-    x, y = np.dot(R, np.array([x, y]))
+    x, y = np.dot(R, [x, y])
     x += xcenter
     y += ycenter
 
@@ -1886,6 +1944,35 @@ def test_bar_hatches(fig_test, fig_ref):
     ax_test.bar(x, y, hatch=hatches)
 
 
+@pytest.mark.parametrize(
+    ("x", "width", "label", "expected_labels", "container_label"),
+    [
+        ("x", 1, "x", ["_nolegend_"], "x"),
+        (["a", "b", "c"], [10, 20, 15], ["A", "B", "C"],
+         ["A", "B", "C"], "_nolegend_"),
+        (["a", "b", "c"], [10, 20, 15], ["R", "Y", "_nolegend_"],
+         ["R", "Y", "_nolegend_"], "_nolegend_"),
+        (["a", "b", "c"], [10, 20, 15], "bars",
+         ["_nolegend_", "_nolegend_", "_nolegend_"], "bars"),
+    ]
+)
+def test_bar_labels(x, width, label, expected_labels, container_label):
+    _, ax = plt.subplots()
+    bar_container = ax.bar(x, width, label=label)
+    bar_labels = [bar.get_label() for bar in bar_container]
+    assert expected_labels == bar_labels
+    assert bar_container.get_label() == container_label
+
+
+def test_bar_labels_length():
+    _, ax = plt.subplots()
+    with pytest.raises(ValueError):
+        ax.bar(["x", "y"], [1, 2], label=["X", "Y", "Z"])
+    _, ax = plt.subplots()
+    with pytest.raises(ValueError):
+        ax.bar(["x", "y"], [1, 2], label=["X"])
+
+
 def test_pandas_minimal_plot(pd):
     # smoke test that series and index objects do not warn
     for x in [pd.Series([1, 2], dtype="float64"),
@@ -2011,7 +2098,7 @@ def test_hist_datetime_datasets():
 @pytest.mark.parametrize("bins_preprocess",
                          [mpl.dates.date2num,
                           lambda bins: bins,
-                          lambda bins: np.asarray(bins).astype('datetime64')],
+                          lambda bins: np.asarray(bins, 'datetime64')],
                          ids=['date2num', 'datetime.datetime',
                               'np.datetime64'])
 def test_hist_datetime_datasets_bins(bins_preprocess):
@@ -2250,7 +2337,7 @@ def test_contour_hatching():
     x, y, z = contour_dat()
     fig, ax = plt.subplots()
     ax.contourf(x, y, z, 7, hatches=['/', '\\', '//', '-'],
-                cmap=plt.get_cmap('gray'),
+                cmap=mpl.colormaps['gray'],
                 extend='both', alpha=0.5)
 
 
@@ -2260,7 +2347,7 @@ def test_contour_colorbar():
 
     fig, ax = plt.subplots()
     cs = ax.contourf(x, y, z, levels=np.arange(-1.8, 1.801, 0.2),
-                     cmap=plt.get_cmap('RdBu'),
+                     cmap=mpl.colormaps['RdBu'],
                      vmin=-0.6,
                      vmax=0.6,
                      extend='both')
@@ -2383,6 +2470,25 @@ class TestScatter:
         with pytest.raises(ValueError):
             plt.scatter([1, 2, 3], [1, 2, 3], color=[1, 2, 3])
 
+    @pytest.mark.parametrize('kwargs',
+                                [
+                                    {'cmap': 'gray'},
+                                    {'norm': mcolors.Normalize()},
+                                    {'vmin': 0},
+                                    {'vmax': 0}
+                                ])
+    def test_scatter_color_warning(self, kwargs):
+        warn_match = "No data for colormapping provided "
+        # Warn for cases where 'cmap', 'norm', 'vmin', 'vmax'
+        # kwargs are being overridden
+        with pytest.warns(Warning, match=warn_match):
+            plt.scatter([], [], **kwargs)
+        with pytest.warns(Warning, match=warn_match):
+            plt.scatter([1, 2], [3, 4], c=[], **kwargs)
+        # Do not warn for cases where 'c' matches 'x' and 'y'
+        plt.scatter([], [], c=[], **kwargs)
+        plt.scatter([1, 2], [3, 4], c=[4, 5], **kwargs)
+
     def test_scatter_unfilled(self):
         coll = plt.scatter([0, 1, 2], [1, 3, 2], c=['0.1', '0.3', '0.5'],
                            marker=mmarkers.MarkerStyle('o', fillstyle='none'),
@@ -2425,7 +2531,7 @@ class TestScatter:
     @check_figures_equal(extensions=["png"])
     def test_scatter_invalid_color(self, fig_test, fig_ref):
         ax = fig_test.subplots()
-        cmap = plt.get_cmap("viridis", 16)
+        cmap = mpl.colormaps["viridis"].resampled(16)
         cmap.set_bad("k", 1)
         # Set a nonuniform size to prevent the last call to `scatter` (plotting
         # the invalid points separately in fig_ref) from using the marker
@@ -2434,7 +2540,7 @@ class TestScatter:
                    c=[1, np.nan, 2, np.nan], s=[1, 2, 3, 4],
                    cmap=cmap, plotnonfinite=True)
         ax = fig_ref.subplots()
-        cmap = plt.get_cmap("viridis", 16)
+        cmap = mpl.colormaps["viridis"].resampled(16)
         ax.scatter([0, 2], [0, 2], c=[1, 2], s=[1, 3], cmap=cmap)
         ax.scatter([1, 3], [1, 3], s=[2, 4], color="k")
 
@@ -2442,7 +2548,7 @@ class TestScatter:
     def test_scatter_no_invalid_color(self, fig_test, fig_ref):
         # With plotnonfinite=False we plot only 2 points.
         ax = fig_test.subplots()
-        cmap = plt.get_cmap("viridis", 16)
+        cmap = mpl.colormaps["viridis"].resampled(16)
         cmap.set_bad("k", 1)
         ax.scatter(range(4), range(4),
                    c=[1, np.nan, 2, np.nan], s=[1, 2, 3, 4],
@@ -2533,15 +2639,17 @@ class TestScatter:
             "conversion": "^'c' argument must be a color",  # bad vals
             }
 
-        if re_key is None:
+        assert_context = (
+            pytest.raises(ValueError, match=REGEXP[re_key])
+            if re_key is not None
+            else pytest.warns(match="argument looks like a single numeric RGB")
+            if isinstance(c_case, list) and len(c_case) == 3
+            else contextlib.nullcontext()
+        )
+        with assert_context:
             mpl.axes.Axes._parse_scatter_color_args(
                 c=c_case, edgecolors="black", kwargs={}, xsize=xsize,
                 get_next_color_func=get_next_color)
-        else:
-            with pytest.raises(ValueError, match=REGEXP[re_key]):
-                mpl.axes.Axes._parse_scatter_color_args(
-                    c=c_case, edgecolors="black", kwargs={}, xsize=xsize,
-                    get_next_color_func=get_next_color)
 
     @mpl.style.context('default')
     @check_figures_equal(extensions=["png"])
@@ -2664,7 +2772,7 @@ def test_as_mpl_axes_api():
 
     # testing axes creation with subplot
     ax = plt.subplot(121, projection=prj)
-    assert type(ax) == mpl.axes._subplots.subplot_class_factory(PolarAxes)
+    assert type(ax) == PolarAxes
     plt.close()
 
 
@@ -2752,10 +2860,11 @@ def test_stackplot():
     ax.set_xlim((0, 10))
     ax.set_ylim((0, 70))
 
-    # Reuse testcase from above for a labeled data test
+    # Reuse testcase from above for a test with labeled data and with colours
+    # from the Axes property cycle.
     data = {"x": x, "y1": y1, "y2": y2, "y3": y3}
     fig, ax = plt.subplots()
-    ax.stackplot("x", "y1", "y2", "y3", data=data)
+    ax.stackplot("x", "y1", "y2", "y3", data=data, colors=["C0", "C1", "C2"])
     ax.set_xlim((0, 10))
     ax.set_ylim((0, 70))
 
@@ -3581,6 +3690,41 @@ def test_errorbar():
     ax.set_title("Simplest errorbars, 0.2 in x, 0.4 in y")
 
 
+@image_comparison(['mixed_errorbar_polar_caps'], extensions=['png'],
+                  remove_text=True)
+def test_mixed_errorbar_polar_caps():
+    """
+    Mix several polar errorbar use cases in a single test figure.
+
+    It is advisable to position individual points off the grid. If there are
+    problems with reproducibility of this test, consider removing grid.
+    """
+    fig = plt.figure()
+    ax = plt.subplot(111, projection='polar')
+
+    # symmetric errorbars
+    th_sym = [1, 2, 3]
+    r_sym = [0.9]*3
+    ax.errorbar(th_sym, r_sym, xerr=0.35, yerr=0.2, fmt="o")
+
+    # long errorbars
+    th_long = [np.pi/2 + .1, np.pi + .1]
+    r_long = [1.8, 2.2]
+    ax.errorbar(th_long, r_long, xerr=0.8 * np.pi, yerr=0.15, fmt="o")
+
+    # asymmetric errorbars
+    th_asym = [4*np.pi/3 + .1, 5*np.pi/3 + .1, 2*np.pi-0.1]
+    r_asym = [1.1]*3
+    xerr = [[.3, .3, .2], [.2, .3, .3]]
+    yerr = [[.35, .5, .5], [.5, .35, .5]]
+    ax.errorbar(th_asym, r_asym, xerr=xerr, yerr=yerr, fmt="o")
+
+    # overlapping errorbar
+    th_over = [2.1]
+    r_over = [3.1]
+    ax.errorbar(th_over, r_over, xerr=10, yerr=.2, fmt="o")
+
+
 def test_errorbar_colorcycle():
 
     f, ax = plt.subplots()
@@ -3822,8 +3966,6 @@ def test_errorbar_nan(fig_test, fig_ref):
     es = np.array([4, 5, np.nan, np.nan, 6])
     ax.errorbar(xs, ys, es)
     ax = fig_ref.add_subplot()
-    ys = np.array([1, 2, np.nan, np.nan, 3])
-    es = np.array([4, 5, np.nan, np.nan, 6])
     ax.errorbar([0, 1], [1, 2], [4, 5])
     ax.errorbar([4], [3], [6], fmt="C0")
 
@@ -4418,6 +4560,26 @@ def test_eventplot_colors(colors):
 
     for coll, color in zip(collections, expected):
         assert_allclose(coll.get_color(), color)
+
+
+def test_eventplot_alpha():
+    fig, ax = plt.subplots()
+
+    # one alpha for all
+    collections = ax.eventplot([[0, 2, 4], [1, 3, 5, 7]], alpha=0.7)
+    assert collections[0].get_alpha() == 0.7
+    assert collections[1].get_alpha() == 0.7
+
+    # one alpha per collection
+    collections = ax.eventplot([[0, 2, 4], [1, 3, 5, 7]], alpha=[0.5, 0.7])
+    assert collections[0].get_alpha() == 0.5
+    assert collections[1].get_alpha() == 0.7
+
+    with pytest.raises(ValueError, match="alpha and positions are unequal"):
+        ax.eventplot([[0, 2, 4], [1, 3, 5, 7]], alpha=[0.5, 0.7, 0.9])
+
+    with pytest.raises(ValueError, match="alpha and positions are unequal"):
+        ax.eventplot([0, 2, 4], alpha=[0.5, 0.7])
 
 
 @image_comparison(['test_eventplot_problem_kwargs.png'], remove_text=True)
@@ -5290,8 +5452,8 @@ def test_shared_aspect_error():
 
 @pytest.mark.parametrize('err, args, kwargs, match',
                          ((TypeError, (1, 2), {},
-                           r"axis\(\) takes 0 or 1 positional arguments but 2"
-                           " were given"),
+                           r"axis\(\) takes from 0 to 1 positional arguments "
+                           "but 2 were given"),
                           (ValueError, ('foo', ), {},
                            "Unrecognized string 'foo' to axis; try 'on' or "
                            "'off'"),
@@ -5593,6 +5755,17 @@ def test_set_get_ticklabels():
     ax[1].set_yticklabels(ax[0].get_yticklabels())
 
 
+def test_set_ticks_kwargs_raise_error_without_labels():
+    """
+    When labels=None and any kwarg is passed, axis.set_ticks() raises a
+    ValueError.
+    """
+    fig, ax = plt.subplots()
+    ticks = [1, 2, 3]
+    with pytest.raises(ValueError):
+        ax.xaxis.set_ticks(ticks, alpha=0.5)
+
+
 @check_figures_equal(extensions=["png"])
 def test_set_ticks_with_labels(fig_test, fig_ref):
     """
@@ -5734,21 +5907,17 @@ def test_set_margin_updates_limits():
     assert ax.get_xlim() == (1, 2)
 
 
-@pytest.mark.parametrize('err, args, kwargs, match',
-                         ((ValueError, (-1,), {},
-                           'margin must be greater than -0.5'),
-                          (ValueError, (1, -1), {},
-                           'margin must be greater than -0.5'),
-                          (ValueError, tuple(), {'x': -1},
-                           'margin must be greater than -0.5'),
-                          (ValueError, tuple(), {'y': -1},
-                           'margin must be greater than -0.5'),
-                          (TypeError, (1, ), {'x': 1, 'y': 1},
-                           'Cannot pass both positional and keyword '
-                           'arguments for x and/or y.'),
-                          (TypeError, (1, 1, 1), {},
-                           'Must pass a single positional argument for all*'),
-                          ))
+@pytest.mark.parametrize('err, args, kwargs, match', (
+        (ValueError, (-1,), {}, r'margin must be greater than -0\.5'),
+        (ValueError, (1, -1), {}, r'margin must be greater than -0\.5'),
+        (ValueError, tuple(), {'x': -1}, r'margin must be greater than -0\.5'),
+        (ValueError, tuple(), {'y': -1}, r'margin must be greater than -0\.5'),
+        (TypeError, (1, ), {'x': 1, 'y': 1},
+         'Cannot pass both positional and keyword arguments for x and/or y'),
+        (TypeError, (1, ), {'x': 1},
+         'Cannot pass both positional and keyword arguments for x and/or y'),
+        (TypeError, (1, 1, 1), {}, 'Must pass a single positional argument'),
+))
 def test_margins_errors(err, args, kwargs, match):
     with pytest.raises(err, match=match):
         fig = plt.figure()
@@ -6274,7 +6443,7 @@ def test_pandas_pcolormesh(pd):
 
 def test_pandas_indexing_dates(pd):
     dates = np.arange('2005-02', '2005-03', dtype='datetime64[D]')
-    values = np.sin(np.array(range(len(dates))))
+    values = np.sin(range(len(dates)))
     df = pd.DataFrame({'dates': dates, 'values': values})
 
     ax = plt.gca()
@@ -6317,22 +6486,31 @@ def test_pandas_bar_align_center(pd):
     fig.canvas.draw()
 
 
-def test_tick_apply_tickdir_deprecation():
-    # Remove this test when the deprecation expires.
-    import matplotlib.axis as maxis
-    ax = plt.axes()
+def test_axis_get_tick_params():
+    axis = plt.subplot().yaxis
+    initial_major_style_translated = {**axis.get_tick_params(which='major')}
+    initial_minor_style_translated = {**axis.get_tick_params(which='minor')}
 
-    tick = maxis.XTick(ax, 0)
-    with pytest.warns(MatplotlibDeprecationWarning,
-                      match="The apply_tickdir function was deprecated in "
-                            "Matplotlib 3.5"):
-        tick.apply_tickdir('out')
+    translated_major_kw = axis._translate_tick_params(
+        axis._major_tick_kw, reverse=True
+    )
+    translated_minor_kw = axis._translate_tick_params(
+        axis._minor_tick_kw, reverse=True
+    )
 
-    tick = maxis.YTick(ax, 0)
-    with pytest.warns(MatplotlibDeprecationWarning,
-                      match="The apply_tickdir function was deprecated in "
-                            "Matplotlib 3.5"):
-        tick.apply_tickdir('out')
+    assert translated_major_kw == initial_major_style_translated
+    assert translated_minor_kw == initial_minor_style_translated
+    axis.set_tick_params(labelsize=30, labelcolor='red',
+                         direction='out', which='both')
+
+    new_major_style_translated = {**axis.get_tick_params(which='major')}
+    new_minor_style_translated = {**axis.get_tick_params(which='minor')}
+    new_major_style = axis._translate_tick_params(new_major_style_translated)
+    new_minor_style = axis._translate_tick_params(new_minor_style_translated)
+    assert initial_major_style_translated != new_major_style_translated
+    assert axis._major_tick_kw == new_major_style
+    assert initial_minor_style_translated != new_minor_style_translated
+    assert axis._minor_tick_kw == new_minor_style
 
 
 def test_axis_set_tick_params_labelsize_labelcolor():
@@ -6686,9 +6864,9 @@ def test_color_length_mismatch():
     fig, ax = plt.subplots()
     with pytest.raises(ValueError):
         ax.scatter(x, y, c=colors)
-    c_rgb = (0.5, 0.5, 0.5)
-    ax.scatter(x, y, c=c_rgb)
-    ax.scatter(x, y, c=[c_rgb] * N)
+    with pytest.warns(match="argument looks like a single numeric RGB"):
+        ax.scatter(x, y, c=(0.5, 0.5, 0.5))
+    ax.scatter(x, y, c=[(0.5, 0.5, 0.5)] * N)
 
 
 def test_eventplot_legend():
@@ -7434,6 +7612,18 @@ def test_bbox_aspect_axes_init():
     assert_allclose(sizes, sizes[0])
 
 
+def test_set_aspect_negative():
+    fig, ax = plt.subplots()
+    with pytest.raises(ValueError, match="must be finite and positive"):
+        ax.set_aspect(-1)
+    with pytest.raises(ValueError, match="must be finite and positive"):
+        ax.set_aspect(0)
+    with pytest.raises(ValueError, match="must be finite and positive"):
+        ax.set_aspect(np.inf)
+    with pytest.raises(ValueError, match="must be finite and positive"):
+        ax.set_aspect(-np.inf)
+
+
 def test_redraw_in_frame():
     fig, ax = plt.subplots(1, 1)
     ax.plot([1, 2, 3])
@@ -7559,7 +7749,8 @@ def test_2dcolor_plot(fig_test, fig_ref):
     # plot with 1D-color:
     axs = fig_test.subplots(5)
     axs[0].plot([1, 2], [1, 2], c=color.reshape(-1))
-    axs[1].scatter([1, 2], [1, 2], c=color.reshape(-1))
+    with pytest.warns(match="argument looks like a single numeric RGB"):
+        axs[1].scatter([1, 2], [1, 2], c=color.reshape(-1))
     axs[2].step([1, 2], [1, 2], c=color.reshape(-1))
     axs[3].hist(np.arange(10), color=color.reshape(-1))
     axs[4].bar(np.arange(10), np.arange(10), color=color.reshape(-1))
@@ -7699,12 +7890,22 @@ def test_bar_label_location_center():
     ys, widths = [1, 2], [3, -4]
     rects = ax.barh(ys, widths)
     labels = ax.bar_label(rects, label_type='center')
-    assert labels[0].xy == (widths[0] / 2, ys[0])
+    assert labels[0].xy == (0.5, 0.5)
     assert labels[0].get_ha() == 'center'
     assert labels[0].get_va() == 'center'
-    assert labels[1].xy == (widths[1] / 2, ys[1])
+    assert labels[1].xy == (0.5, 0.5)
     assert labels[1].get_ha() == 'center'
     assert labels[1].get_va() == 'center'
+
+
+@image_comparison(['test_centered_bar_label_nonlinear.svg'])
+def test_centered_bar_label_nonlinear():
+    _, ax = plt.subplots()
+    bar_container = ax.barh(['c', 'b', 'a'], [1_000, 5_000, 7_000])
+    ax.set_xscale('log')
+    ax.set_xlim(1, None)
+    ax.bar_label(bar_container, label_type='center')
+    ax.set_axis_off()
 
 
 def test_bar_label_location_errorbars():
@@ -7720,12 +7921,22 @@ def test_bar_label_location_errorbars():
     assert labels[1].get_va() == 'top'
 
 
-def test_bar_label_fmt():
+@pytest.mark.parametrize('fmt', [
+    '%.2f', '{:.2f}', '{:.2f}'.format
+])
+def test_bar_label_fmt(fmt):
     ax = plt.gca()
     rects = ax.bar([1, 2], [3, -4])
-    labels = ax.bar_label(rects, fmt='%.2f')
+    labels = ax.bar_label(rects, fmt=fmt)
     assert labels[0].get_text() == '3.00'
     assert labels[1].get_text() == '-4.00'
+
+
+def test_bar_label_fmt_error():
+    ax = plt.gca()
+    rects = ax.bar([1, 2], [3, -4])
+    with pytest.raises(TypeError, match='str or callable'):
+        _ = ax.bar_label(rects, fmt=10)
 
 
 def test_bar_label_labels():
@@ -7787,10 +7998,7 @@ def test_patch_bounds():  # PR 19078
 def test_warn_ignored_scatter_kwargs():
     with pytest.warns(UserWarning,
                       match=r"You passed a edgecolor/edgecolors"):
-
-        c = plt.scatter(
-            [0], [0], marker="+", s=500, facecolor="r", edgecolor="b"
-        )
+        plt.scatter([0], [0], marker="+", s=500, facecolor="r", edgecolor="b")
 
 
 def test_artist_sublists():
@@ -8013,9 +8221,148 @@ def test_bezier_autoscale():
     assert ax.get_ylim()[0] == -0.5
 
 
+def test_small_autoscale():
+    # Check that paths with small values autoscale correctly #24097.
+    verts = np.array([
+        [-5.45, 0.00], [-5.45, 0.00], [-5.29, 0.00], [-5.29, 0.00],
+        [-5.13, 0.00], [-5.13, 0.00], [-4.97, 0.00], [-4.97, 0.00],
+        [-4.81, 0.00], [-4.81, 0.00], [-4.65, 0.00], [-4.65, 0.00],
+        [-4.49, 0.00], [-4.49, 0.00], [-4.33, 0.00], [-4.33, 0.00],
+        [-4.17, 0.00], [-4.17, 0.00], [-4.01, 0.00], [-4.01, 0.00],
+        [-3.85, 0.00], [-3.85, 0.00], [-3.69, 0.00], [-3.69, 0.00],
+        [-3.53, 0.00], [-3.53, 0.00], [-3.37, 0.00], [-3.37, 0.00],
+        [-3.21, 0.00], [-3.21, 0.01], [-3.05, 0.01], [-3.05, 0.01],
+        [-2.89, 0.01], [-2.89, 0.01], [-2.73, 0.01], [-2.73, 0.02],
+        [-2.57, 0.02], [-2.57, 0.04], [-2.41, 0.04], [-2.41, 0.04],
+        [-2.25, 0.04], [-2.25, 0.06], [-2.09, 0.06], [-2.09, 0.08],
+        [-1.93, 0.08], [-1.93, 0.10], [-1.77, 0.10], [-1.77, 0.12],
+        [-1.61, 0.12], [-1.61, 0.14], [-1.45, 0.14], [-1.45, 0.17],
+        [-1.30, 0.17], [-1.30, 0.19], [-1.14, 0.19], [-1.14, 0.22],
+        [-0.98, 0.22], [-0.98, 0.25], [-0.82, 0.25], [-0.82, 0.27],
+        [-0.66, 0.27], [-0.66, 0.29], [-0.50, 0.29], [-0.50, 0.30],
+        [-0.34, 0.30], [-0.34, 0.32], [-0.18, 0.32], [-0.18, 0.33],
+        [-0.02, 0.33], [-0.02, 0.32], [0.13, 0.32], [0.13, 0.33], [0.29, 0.33],
+        [0.29, 0.31], [0.45, 0.31], [0.45, 0.30], [0.61, 0.30], [0.61, 0.28],
+        [0.77, 0.28], [0.77, 0.25], [0.93, 0.25], [0.93, 0.22], [1.09, 0.22],
+        [1.09, 0.19], [1.25, 0.19], [1.25, 0.17], [1.41, 0.17], [1.41, 0.15],
+        [1.57, 0.15], [1.57, 0.12], [1.73, 0.12], [1.73, 0.10], [1.89, 0.10],
+        [1.89, 0.08], [2.05, 0.08], [2.05, 0.07], [2.21, 0.07], [2.21, 0.05],
+        [2.37, 0.05], [2.37, 0.04], [2.53, 0.04], [2.53, 0.02], [2.69, 0.02],
+        [2.69, 0.02], [2.85, 0.02], [2.85, 0.01], [3.01, 0.01], [3.01, 0.01],
+        [3.17, 0.01], [3.17, 0.00], [3.33, 0.00], [3.33, 0.00], [3.49, 0.00],
+        [3.49, 0.00], [3.65, 0.00], [3.65, 0.00], [3.81, 0.00], [3.81, 0.00],
+        [3.97, 0.00], [3.97, 0.00], [4.13, 0.00], [4.13, 0.00], [4.29, 0.00],
+        [4.29, 0.00], [4.45, 0.00], [4.45, 0.00], [4.61, 0.00], [4.61, 0.00],
+        [4.77, 0.00], [4.77, 0.00], [4.93, 0.00], [4.93, 0.00],
+    ])
+
+    minx = np.min(verts[:, 0])
+    miny = np.min(verts[:, 1])
+    maxx = np.max(verts[:, 0])
+    maxy = np.max(verts[:, 1])
+
+    p = mpath.Path(verts)
+
+    fig, ax = plt.subplots()
+    ax.add_patch(mpatches.PathPatch(p))
+    ax.autoscale()
+
+    assert ax.get_xlim()[0] <= minx
+    assert ax.get_xlim()[1] >= maxx
+    assert ax.get_ylim()[0] <= miny
+    assert ax.get_ylim()[1] >= maxy
+
+
 def test_get_xticklabel():
     fig, ax = plt.subplots()
     ax.plot(np.arange(10))
     for ind in range(10):
         assert ax.get_xticklabels()[ind].get_text() == f'{ind}'
         assert ax.get_yticklabels()[ind].get_text() == f'{ind}'
+
+
+def test_bar_leading_nan():
+
+    barx = np.arange(3, dtype=float)
+    barheights = np.array([0.5, 1.5, 2.0])
+    barstarts = np.array([0.77]*3)
+
+    barx[0] = np.NaN
+
+    fig, ax = plt.subplots()
+
+    bars = ax.bar(barx, barheights, bottom=barstarts)
+
+    hbars = ax.barh(barx, barheights, left=barstarts)
+
+    for bar_set in (bars, hbars):
+        # the first bar should have a nan in the location
+        nanful, *rest = bar_set
+        assert (~np.isfinite(nanful.xy)).any()
+        assert np.isfinite(nanful.get_width())
+        for b in rest:
+            assert np.isfinite(b.xy).all()
+            assert np.isfinite(b.get_width())
+
+
+@check_figures_equal(extensions=["png"])
+def test_bar_all_nan(fig_test, fig_ref):
+    mpl.style.use("mpl20")
+    ax_test = fig_test.subplots()
+    ax_ref = fig_ref.subplots()
+
+    ax_test.bar([np.nan], [np.nan])
+    ax_test.bar([1], [1])
+
+    ax_ref.bar([1], [1]).remove()
+    ax_ref.bar([1], [1])
+
+
+@image_comparison(["extent_units.png"], style="mpl20")
+def test_extent_units():
+    _, axs = plt.subplots(2, 2)
+    date_first = np.datetime64('2020-01-01', 'D')
+    date_last = np.datetime64('2020-01-11', 'D')
+    arr = [[i+j for i in range(10)] for j in range(10)]
+
+    axs[0, 0].set_title('Date extents on y axis')
+    im = axs[0, 0].imshow(arr, origin='lower',
+                          extent=[1, 11, date_first, date_last],
+                          cmap=mpl.colormaps["plasma"])
+
+    axs[0, 1].set_title('Date extents on x axis (Day of Jan 2020)')
+    im = axs[0, 1].imshow(arr, origin='lower',
+                          extent=[date_first, date_last, 1, 11],
+                          cmap=mpl.colormaps["plasma"])
+    axs[0, 1].xaxis.set_major_formatter(mdates.DateFormatter('%d'))
+
+    im = axs[1, 0].imshow(arr, origin='lower',
+                          extent=[date_first, date_last,
+                                  date_first, date_last],
+                          cmap=mpl.colormaps["plasma"])
+    axs[1, 0].xaxis.set_major_formatter(mdates.DateFormatter('%d'))
+    axs[1, 0].set(xlabel='Day of Jan 2020')
+
+    im = axs[1, 1].imshow(arr, origin='lower',
+                          cmap=mpl.colormaps["plasma"])
+    im.set_extent([date_last, date_first, date_last, date_first])
+    axs[1, 1].xaxis.set_major_formatter(mdates.DateFormatter('%d'))
+    axs[1, 1].set(xlabel='Day of Jan 2020')
+
+    with pytest.raises(ValueError,
+                       match="set_extent did not consume all of the kwargs"):
+        im.set_extent([2, 12, date_first, date_last], clip=False)
+
+
+def test_scatter_color_repr_error():
+
+    def get_next_color():
+        return 'blue'  # pragma: no cover
+    msg = (
+            r"'c' argument must be a color, a sequence of colors"
+            r", or a sequence of numbers, not 'red\\n'"
+        )
+    with pytest.raises(ValueError, match=msg):
+        c = 'red\n'
+        mpl.axes.Axes._parse_scatter_color_args(
+            c, None, kwargs={}, xsize=2, get_next_color_func=get_next_color)

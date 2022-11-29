@@ -24,7 +24,8 @@ Container classes for `.Artist`\s.
 
 import numpy as np
 
-from matplotlib import _api, _docstring, rcParams
+import matplotlib as mpl
+from matplotlib import _api, _docstring
 import matplotlib.artist as martist
 import matplotlib.path as mpath
 import matplotlib.text as mtext
@@ -45,15 +46,12 @@ def bbox_artist(*args, **kwargs):
         mbbox_artist(*args, **kwargs)
 
 
-def _get_packed_offsets(wd_list, total, sep, mode="fixed"):
+def _get_packed_offsets(widths, total, sep, mode="fixed"):
     r"""
-    Pack boxes specified by their ``(width, xdescent)`` pair.
+    Pack boxes specified by their *widths*.
 
     For simplicity of the description, the terminology used here assumes a
     horizontal layout, but the function works equally for a vertical layout.
-
-    *xdescent* is analogous to the usual descent, but along the x-direction; it
-    is currently ignored.
 
     There are three packing *mode*\s:
 
@@ -78,8 +76,8 @@ def _get_packed_offsets(wd_list, total, sep, mode="fixed"):
 
     Parameters
     ----------
-    wd_list : list of (float, float)
-        (width, xdescent) of boxes to be packed.
+    widths : list of float
+        Widths of boxes to be packed.
     total : float or None
         Intended total length. *None* if not used.
     sep : float
@@ -94,11 +92,10 @@ def _get_packed_offsets(wd_list, total, sep, mode="fixed"):
     offsets : array of float
         The left offsets of the boxes.
     """
-    w_list, d_list = zip(*wd_list)  # d_list is currently not used.
     _api.check_in_list(["fixed", "expand", "equal"], mode=mode)
 
     if mode == "fixed":
-        offsets_ = np.cumsum([0] + [w + sep for w in w_list])
+        offsets_ = np.cumsum([0] + [w + sep for w in widths])
         offsets = offsets_[:-1]
         if total is None:
             total = offsets_[-1] - sep
@@ -109,24 +106,24 @@ def _get_packed_offsets(wd_list, total, sep, mode="fixed"):
         # is None and used in conjugation with tight layout.
         if total is None:
             total = 1
-        if len(w_list) > 1:
-            sep = (total - sum(w_list)) / (len(w_list) - 1)
+        if len(widths) > 1:
+            sep = (total - sum(widths)) / (len(widths) - 1)
         else:
             sep = 0
-        offsets_ = np.cumsum([0] + [w + sep for w in w_list])
+        offsets_ = np.cumsum([0] + [w + sep for w in widths])
         offsets = offsets_[:-1]
         return total, offsets
 
     elif mode == "equal":
-        maxh = max(w_list)
+        maxh = max(widths)
         if total is None:
             if sep is None:
                 raise ValueError("total and sep cannot both be None when "
                                  "using layout mode 'equal'")
-            total = (maxh + sep) * len(w_list)
+            total = (maxh + sep) * len(widths)
         else:
-            sep = total / len(w_list) - maxh
-        offsets = (maxh + sep) * np.arange(len(w_list))
+            sep = total / len(widths) - maxh
+        offsets = (maxh + sep) * np.arange(len(widths))
         return total, offsets
 
 
@@ -349,8 +346,12 @@ class OffsetBox(martist.Artist):
         # docstring inherited
         if renderer is None:
             renderer = self.figure._get_renderer()
-        w, h, xd, yd, offsets = self.get_extent_offsets(renderer)
-        px, py = self.get_offset(w, h, xd, yd, renderer)
+        w, h, xd, yd = self.get_extent(renderer)
+        # Some subclasses redefine get_offset to take no args.
+        try:
+            px, py = self.get_offset(w, h, xd, yd, renderer)
+        except TypeError:
+            px, py = self.get_offset()
         return mtransforms.Bbox.from_bounds(px - xd, py - yd, w, h)
 
     def draw(self, renderer):
@@ -440,7 +441,7 @@ class VPacker(PackerBase):
                                                          self.width,
                                                          self.align)
 
-        pack_list = [(h, yd) for w, h, xd, yd in whd_list]
+        pack_list = [h for w, h, xd, yd in whd_list]
         height, yoffsets_ = _get_packed_offsets(pack_list, self.height,
                                                 sep, self.mode)
 
@@ -478,8 +479,7 @@ class HPacker(PackerBase):
                                                           self.height,
                                                           self.align)
 
-        pack_list = [(w, xd) for w, h, xd, yd in whd_list]
-
+        pack_list = [w for w, h, xd, yd in whd_list]
         width, xoffsets_ = _get_packed_offsets(pack_list, self.width,
                                                sep, self.mode)
 
@@ -510,7 +510,7 @@ class PaddedBox(OffsetBox):
             The contained `.Artist`.
         pad : float
             The padding in points. This will be scaled with the renderer dpi.
-            In contrast *width* and *height* are in *pixels* and thus not
+            In contrast, *width* and *height* are in *pixels* and thus not
             scaled.
         draw_frame : bool
             Whether to draw the contained `.FancyBboxPatch`.
@@ -634,15 +634,6 @@ class DrawingArea(OffsetBox):
     def get_offset(self):
         """Return offset of the container."""
         return self._offset
-
-    def get_window_extent(self, renderer=None):
-        # docstring inherited
-        if renderer is None:
-            renderer = self.figure._get_renderer()
-        w, h, xd, yd = self.get_extent(renderer)
-        ox, oy = self.get_offset()  # w, h, xd, yd)
-
-        return mtransforms.Bbox.from_bounds(ox - xd, oy - yd, w, h)
 
     def get_extent(self, renderer):
         """Return width, height, xdescent, ydescent of box."""
@@ -772,14 +763,6 @@ class TextArea(OffsetBox):
         """Return offset of the container."""
         return self._offset
 
-    def get_window_extent(self, renderer=None):
-        # docstring inherited
-        if renderer is None:
-            renderer = self.figure._get_renderer()
-        w, h, xd, yd = self.get_extent(renderer)
-        ox, oy = self.get_offset()
-        return mtransforms.Bbox.from_bounds(ox - xd, oy - yd, w, h)
-
     def get_extent(self, renderer):
         _, h_, d_ = renderer.get_text_width_height_descent(
             "lp", self._text._fontproperties,
@@ -875,14 +858,6 @@ class AuxTransformBox(OffsetBox):
         """Return offset of the container."""
         return self._offset
 
-    def get_window_extent(self, renderer=None):
-        # docstring inherited
-        if renderer is None:
-            renderer = self.figure._get_renderer()
-        w, h, xd, yd = self.get_extent(renderer)
-        ox, oy = self.get_offset()  # w, h, xd, yd)
-        return mtransforms.Bbox.from_bounds(ox - xd, oy - yd, w, h)
-
     def get_extent(self, renderer):
         # clear the offset transforms
         _off = self.offset_transform.get_matrix()  # to be restored later
@@ -944,7 +919,7 @@ class AnchoredOffsetbox(OffsetBox):
             The box location.  Valid locations are
             'upper left', 'upper center', 'upper right',
             'center left', 'center', 'center right',
-            'lower left', 'lower center, 'lower right'.
+            'lower left', 'lower center', 'lower right'.
             For backward compatibility, numeric values are accepted as well.
             See the parameter *loc* of `.Legend` for details.
         pad : float, default: 0.4
@@ -982,11 +957,11 @@ class AnchoredOffsetbox(OffsetBox):
         self.pad = pad
 
         if prop is None:
-            self.prop = FontProperties(size=rcParams["legend.fontsize"])
+            self.prop = FontProperties(size=mpl.rcParams["legend.fontsize"])
         else:
             self.prop = FontProperties._from_any(prop)
             if isinstance(prop, dict) and "size" not in prop:
-                self.prop.set_size(rcParams["legend.fontsize"])
+                self.prop.set_size(mpl.rcParams["legend.fontsize"])
 
         self.patch = FancyBboxPatch(
             xy=(0.0, 0.0), width=1., height=1.,
@@ -1060,34 +1035,14 @@ class AnchoredOffsetbox(OffsetBox):
         self._bbox_to_anchor_transform = transform
         self.stale = True
 
-    def get_window_extent(self, renderer=None):
+    def get_offset(self, width, height, xdescent, ydescent, renderer):
         # docstring inherited
-        if renderer is None:
-            renderer = self.figure._get_renderer()
-
-        self._update_offset_func(renderer)
-        w, h, xd, yd = self.get_extent(renderer)
-        ox, oy = self.get_offset(w, h, xd, yd, renderer)
-        return Bbox.from_bounds(ox - xd, oy - yd, w, h)
-
-    def _update_offset_func(self, renderer, fontsize=None):
-        """
-        Update the offset func which depends on the dpi of the
-        renderer (because of the padding).
-        """
-        if fontsize is None:
-            fontsize = renderer.points_to_pixels(
-                self.prop.get_size_in_points())
-
-        def _offset(w, h, xd, yd, renderer):
-            bbox = Bbox.from_bounds(0, 0, w, h)
-            borderpad = self.borderpad * fontsize
-            bbox_to_anchor = self.get_bbox_to_anchor()
-            x0, y0 = _get_anchored_bbox(
-                self.loc, bbox, bbox_to_anchor, borderpad)
-            return x0 + xd, y0 + yd
-
-        self.set_offset(_offset)
+        bbox = Bbox.from_bounds(0, 0, width, height)
+        pad = (self.borderpad
+               * renderer.points_to_pixels(self.prop.get_size_in_points()))
+        bbox_to_anchor = self.get_bbox_to_anchor()
+        x0, y0 = _get_anchored_bbox(self.loc, bbox, bbox_to_anchor, pad)
+        return x0 + xdescent, y0 + ydescent
 
     def update_frame(self, bbox, fontsize=None):
         self.patch.set_bounds(bbox.bounds)
@@ -1099,11 +1054,9 @@ class AnchoredOffsetbox(OffsetBox):
         if not self.get_visible():
             return
 
-        fontsize = renderer.points_to_pixels(self.prop.get_size_in_points())
-        self._update_offset_func(renderer, fontsize)
-
         # update the location and size of the legend
         bbox = self.get_window_extent(renderer)
+        fontsize = renderer.points_to_pixels(self.prop.get_size_in_points())
         self.update_frame(bbox, fontsize)
         self.patch.draw(renderer)
 
@@ -1229,14 +1182,6 @@ class OffsetImage(OffsetBox):
     def get_children(self):
         return [self.image]
 
-    def get_window_extent(self, renderer=None):
-        # docstring inherited
-        if renderer is None:
-            renderer = self.figure._get_renderer()
-        w, h, xd, yd = self.get_extent(renderer)
-        ox, oy = self.get_offset()
-        return mtransforms.Bbox.from_bounds(ox - xd, oy - yd, w, h)
-
     def get_extent(self, renderer):
         if self._dpi_cor:  # True, do correction
             dpi_cor = renderer.points_to_pixels(1.)
@@ -1312,6 +1257,16 @@ class AnnotationBbox(martist.Artist, mtext._AnnotationBase):
             (accessible as the ``patch`` attribute of the `.AnnotationBbox`).
             If *frameon* is set to False, this patch is made invisible.
 
+        annotation_clip: bool or None, default: None
+            Whether to clip (i.e. not draw) the annotation when the annotation
+            point *xy* is outside the axes area.
+
+            - If *True*, the annotation will be clipped when *xy* is outside
+              the axes.
+            - If *False*, the annotation will always be drawn.
+            - If *None*, the annotation will be clipped when *xy* is outside
+              the axes and *xycoords* is 'data'.
+
         pad : float, default: 0.4
             Padding around the offsetbox.
 
@@ -1320,8 +1275,25 @@ class AnnotationBbox(martist.Artist, mtext._AnnotationBase):
             the offset box w.r.t. the *boxcoords*.
             The lower-left corner is (0, 0) and upper-right corner is (1, 1).
 
+        bboxprops : dict, optional
+            A dictionary of properties to set for the annotation bounding box,
+            for example *boxstyle* and *alpha*.  See `.FancyBboxPatch` for
+            details.
+
+        arrowprops: dict, optional
+            Arrow properties, see `.Annotation` for description.
+
+        fontsize: float or str, optional
+            Translated to points and passed as *mutation_scale* into
+            `.FancyBboxPatch` to scale attributes of the box style (e.g. pad
+            or rounding_size).  The name is chosen in analogy to `.Text` where
+            *fontsize* defines the mutation scale as well.  If not given,
+            :rc:`legend.fontsize` is used.  See `.Text.set_fontsize` for valid
+            values.
+
         **kwargs
-            Other parameters are identical to `.Annotation`.
+            Other `AnnotationBbox` properties.  See `.AnnotationBbox.set` for
+            a list.
         """
 
         martist.Artist.__init__(self)
@@ -1402,7 +1374,7 @@ class AnnotationBbox(martist.Artist, mtext._AnnotationBase):
         If *s* is not given, reset to :rc:`legend.fontsize`.
         """
         if s is None:
-            s = rcParams["legend.fontsize"]
+            s = mpl.rcParams["legend.fontsize"]
 
         self.prop = FontProperties(size=s)
         self.stale = True

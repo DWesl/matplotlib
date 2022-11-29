@@ -132,6 +132,7 @@ class NavigationToolbar2Mac(_macosx.NavigationToolbar2, NavigationToolbar2):
             mpl.rcParams['savefig.directory'] = os.path.dirname(filename)
         self.canvas.figure.savefig(filename)
 
+    @_api.deprecated("3.6", alternative='configure_subplots()')
     def prepare_configure_subplots(self):
         toolfig = Figure(figsize=(6, 3))
         canvas = FigureCanvasMac(toolfig)
@@ -164,6 +165,10 @@ class FigureManagerMac(_macosx.FigureManager, FigureManagerBase):
     def close(self):
         return self._close_button_pressed()
 
+    @classmethod
+    def start_main_loop(cls):
+        _macosx.show()
+
     def show(self):
         if not self._shown:
             self._show()
@@ -176,7 +181,4 @@ class FigureManagerMac(_macosx.FigureManager, FigureManagerBase):
 class _BackendMac(_Backend):
     FigureCanvas = FigureCanvasMac
     FigureManager = FigureManagerMac
-
-    @staticmethod
-    def mainloop():
-        _macosx.show()
+    mainloop = FigureManagerMac.start_main_loop

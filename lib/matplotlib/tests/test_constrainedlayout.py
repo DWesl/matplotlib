@@ -1,10 +1,11 @@
 import numpy as np
 import pytest
 
+import matplotlib as mpl
 from matplotlib.testing.decorators import image_comparison
 import matplotlib.pyplot as plt
 import matplotlib.transforms as mtransforms
-from matplotlib import gridspec, ticker, rcParams
+from matplotlib import gridspec, ticker
 
 
 def example_plot(ax, fontsize=12, nodec=False):
@@ -165,7 +166,7 @@ def test_constrained_layout8():
         for i in ilist:
             ax = fig.add_subplot(gs[j, i])
             axs += [ax]
-            pcm = example_pcolor(ax, fontsize=9)
+            example_pcolor(ax, fontsize=9)
             if i > 0:
                 ax.set_ylabel('')
             if j < 1:
@@ -291,7 +292,7 @@ def test_constrained_layout14():
 @image_comparison(['constrained_layout15.png'])
 def test_constrained_layout15():
     """Test that rcparams work."""
-    rcParams['figure.constrained_layout.use'] = True
+    mpl.rcParams['figure.constrained_layout.use'] = True
     fig, axs = plt.subplots(2, 2)
     for ax in axs.flat:
         example_plot(ax, fontsize=12)
@@ -655,3 +656,14 @@ def test_compressed1():
     pos = axs[1, 2].get_position()
     np.testing.assert_allclose(pos.x1, 0.8618, atol=1e-3)
     np.testing.assert_allclose(pos.y0, 0.1934, atol=1e-3)
+
+
+@pytest.mark.parametrize('arg, state', [
+    (True, True),
+    (False, False),
+    ({}, True),
+    ({'rect': None}, True)
+])
+def test_set_constrained_layout(arg, state):
+    fig, ax = plt.subplots(constrained_layout=arg)
+    assert fig.get_constrained_layout() is state

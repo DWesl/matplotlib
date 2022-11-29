@@ -11,10 +11,13 @@ Tornado-based server "on the side".
 The framework being used must support web sockets.
 """
 
+import argparse
 import io
 import json
 import mimetypes
 from pathlib import Path
+import signal
+import socket
 
 try:
     import tornado
@@ -27,7 +30,7 @@ import tornado.websocket
 
 
 import matplotlib as mpl
-from matplotlib.backends.backend_webagg_core import (
+from matplotlib.backends.backend_webagg import (
     FigureManagerWebAgg, new_figure_manager_given_figure)
 from matplotlib.figure import Figure
 
@@ -49,16 +52,15 @@ def create_figure():
 # The following is the content of the web page.  You would normally
 # generate this using some sort of template facility in your web
 # framework, but here we just use Python string formatting.
-html_content = """
-<html>
+html_content = """<!DOCTYPE html>
+<html lang="en">
   <head>
     <!-- TODO: There should be a way to include all of the required javascript
                and CSS so matplotlib can add to the set in the future if it
                needs to. -->
     <link rel="stylesheet" href="_static/css/page.css" type="text/css">
-    <link rel="stylesheet" href="_static/css/boilerplate.css"
-          type="text/css" />
-    <link rel="stylesheet" href="_static/css/fbm.css" type="text/css" />
+    <link rel="stylesheet" href="_static/css/boilerplate.css" type="text/css">
+    <link rel="stylesheet" href="_static/css/fbm.css" type="text/css">
     <link rel="stylesheet" href="_static/css/mpl.css" type="text/css">
     <script src="mpl.js"></script>
 
@@ -238,13 +240,36 @@ class MyApplication(tornado.web.Application):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--port', type=int, default=8080,
+                        help='Port to listen on (0 for a random port).')
+    args = parser.parse_args()
+
     figure = create_figure()
     application = MyApplication(figure)
 
     http_server = tornado.httpserver.HTTPServer(application)
-    http_server.listen(8080)
+    sockets = tornado.netutil.bind_sockets(args.port, '')
+    http_server.add_sockets(sockets)
 
-    print("http://127.0.0.1:8080/")
+    for s in sockets:
+        addr, port = s.getsockname()[:2]
+        if s.family is socket.AF_INET6:
+            addr = f'[{addr}]'
+        print(f"Listening on http://{addr}:{port}/")
     print("Press Ctrl+C to quit")
 
-    tornado.ioloop.IOLoop.instance().start()
+    ioloop = tornado.ioloop.IOLoop.instance()
+
+    def shutdown():
+        ioloop.stop()
+        print("Server stopped")
+
+    old_handler = signal.signal(
+        signal.SIGINT,
+        lambda sig, frame: ioloop.add_callback_from_signal(shutdown))
+
+    try:
+        ioloop.start()
+    finally:
+        signal.signal(signal.SIGINT, old_handler)

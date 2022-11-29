@@ -1,5 +1,4 @@
 import functools
-import operator
 import os
 import sys
 import traceback
@@ -20,8 +19,6 @@ from .qt_compat import (
     _maybe_allow_interrupt
 )
 
-
-backend_version = __version__
 
 # SPECIAL_KEYS are Qt::Key that do *not* return their Unicode name
 # instead they have manually specified names.
@@ -106,8 +103,8 @@ class __getattr__:
 def _create_qApp():
     app = QtWidgets.QApplication.instance()
 
-    # Create a new QApplication and configure if if non exists yet, as only one
-    # QApplication can exist at a time.
+    # Create a new QApplication and configure it if none exists yet, as only
+    # one QApplication can exist at a time.
     if app is None:
         # display_is_valid returns False only if on Linux and neither X11
         # nor Wayland display can be opened.
@@ -212,6 +209,7 @@ class FigureCanvasQT(FigureCanvasBase, QtWidgets.QWidget):
         self._draw_pending = False
         self._is_drawing = False
         self._draw_rect_callback = lambda painter: None
+        self._in_resize_event = False
 
         self.setAttribute(
             _enum("QtCore.Qt.WidgetAttribute").WA_OpaquePaintEvent)
@@ -334,21 +332,23 @@ class FigureCanvasQT(FigureCanvasBase, QtWidgets.QWidget):
                      guiEvent=event)._process()
 
     def resizeEvent(self, event):
-        frame = sys._getframe()
-        # Prevent PyQt6 recursion, but sometimes frame.f_back is None
-        if frame.f_code is getattr(frame.f_back, 'f_code', None):
+        if self._in_resize_event:  # Prevent PyQt6 recursion
             return
-        w = event.size().width() * self.device_pixel_ratio
-        h = event.size().height() * self.device_pixel_ratio
-        dpival = self.figure.dpi
-        winch = w / dpival
-        hinch = h / dpival
-        self.figure.set_size_inches(winch, hinch, forward=False)
-        # pass back into Qt to let it finish
-        QtWidgets.QWidget.resizeEvent(self, event)
-        # emit our resize events
-        ResizeEvent("resize_event", self)._process()
-        self.draw_idle()
+        self._in_resize_event = True
+        try:
+            w = event.size().width() * self.device_pixel_ratio
+            h = event.size().height() * self.device_pixel_ratio
+            dpival = self.figure.dpi
+            winch = w / dpival
+            hinch = h / dpival
+            self.figure.set_size_inches(winch, hinch, forward=False)
+            # pass back into Qt to let it finish
+            QtWidgets.QWidget.resizeEvent(self, event)
+            # emit our resize events
+            ResizeEvent("resize_event", self)._process()
+            self.draw_idle()
+        finally:
+            self._in_resize_event = False
 
     def sizeHint(self):
         w, h = self.get_width_height()
@@ -376,7 +376,7 @@ class FigureCanvasQT(FigureCanvasBase, QtWidgets.QWidget):
         except KeyError:
             # Unicode defines code points up to 0x10ffff (sys.maxunicode)
             # QT will use Key_Codes larger than that for keyboard keys that are
-            # are not Unicode characters (like multimedia keys)
+            # not Unicode characters (like multimedia keys)
             # skip these
             # if you really want them, you should add them to SPECIAL_KEYS
             if event_key > sys.maxunicode:
@@ -582,6 +582,13 @@ class FigureManagerQT(FigureManagerBase):
         extra_height = self.window.height() - self.canvas.height()
         self.canvas.resize(width, height)
         self.window.resize(width + extra_width, height + extra_height)
+
+    @classmethod
+    def start_main_loop(cls):
+        qapp = QtWidgets.QApplication.instance()
+        if qapp:
+            with _maybe_allow_interrupt(qapp):
+                qt_compat._exec(qapp)
 
     def show(self):
         self.window.show()
@@ -974,13 +981,6 @@ class SaveFigureQt(backend_tools.SaveFigureBase):
             self._make_classic_style_pseudo_toolbar())
 
 
-@_api.deprecated("3.5", alternative="ToolSetCursor")
-class SetCursorQt(backend_tools.SetCursorBase):
-    def set_cursor(self, cursor):
-        NavigationToolbar2QT.set_cursor(
-            self._make_classic_style_pseudo_toolbar(), cursor)
-
-
 @backend_tools._register_tool_class(FigureCanvasQT)
 class RubberbandQt(backend_tools.RubberbandBase):
     def draw_rubberband(self, x0, y0, x1, y1):
@@ -1011,11 +1011,7 @@ FigureManagerQT._toolmanager_toolbar_class = ToolbarQt
 
 @_Backend.export
 class _BackendQT(_Backend):
+    backend_version = __version__
     FigureCanvas = FigureCanvasQT
     FigureManager = FigureManagerQT
-
-    @staticmethod
-    def mainloop():
-        qapp = QtWidgets.QApplication.instance()
-        with _maybe_allow_interrupt(qapp):
-            qt_compat._exec(qapp)
+    mainloop = FigureManagerQT.start_main_loop

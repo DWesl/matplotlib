@@ -3,8 +3,8 @@ import functools
 
 import numpy as np
 
-import matplotlib
-from matplotlib import _api, _docstring, rcParams
+import matplotlib as mpl
+from matplotlib import _api, _docstring
 from matplotlib.artist import allow_rasterization
 import matplotlib.transforms as mtransforms
 import matplotlib.patches as mpatches
@@ -23,7 +23,7 @@ class Spine(mpatches.Patch):
 
     Spines are subclasses of `.Patch`, and inherit much of their behavior.
 
-    Spines draw a line, a circle, or an arc depending if
+    Spines draw a line, a circle, or an arc depending on if
     `~.Spine.set_patch_line`, `~.Spine.set_patch_circle`, or
     `~.Spine.set_patch_arc` has been called. Line-like is the default.
 
@@ -56,8 +56,8 @@ class Spine(mpatches.Patch):
         self.set_figure(self.axes.figure)
         self.spine_type = spine_type
         self.set_facecolor('none')
-        self.set_edgecolor(rcParams['axes.edgecolor'])
-        self.set_linewidth(rcParams['axes.linewidth'])
+        self.set_edgecolor(mpl.rcParams['axes.edgecolor'])
+        self.set_linewidth(mpl.rcParams['axes.linewidth'])
         self.set_capstyle('projecting')
         self.axis = None
 
@@ -70,7 +70,7 @@ class Spine(mpatches.Patch):
         # non-rectangular axes is currently implemented, and this lets
         # them pass through the spines machinery without errors.)
         self._position = None
-        _api.check_isinstance(matplotlib.path.Path, path=path)
+        _api.check_isinstance(mpath.Path, path=path)
         self._path = path
 
         # To support drawing both linear and circular spines, this
@@ -302,8 +302,12 @@ class Spine(mpatches.Patch):
 
         Additionally, shorthand notations define a special positions:
 
-        * 'center' -> ('axes', 0.5)
-        * 'zero' -> ('data', 0.0)
+        * 'center' -> ``('axes', 0.5)``
+        * 'zero' -> ``('data', 0.0)``
+
+        Examples
+        --------
+        :doc:`/gallery/spines/spine_placement_demo`
         """
         if position in ('center', 'zero'):  # special positions
             pass
@@ -432,7 +436,7 @@ class Spine(mpatches.Patch):
         else:
             raise ValueError('unable to make path for spine "%s"' % spine_type)
         result = cls(axes, spine_type, path, **kwargs)
-        result.set_visible(rcParams['axes.spines.{0}'.format(spine_type)])
+        result.set_visible(mpl.rcParams['axes.spines.{0}'.format(spine_type)])
 
         return result
 
@@ -512,7 +516,7 @@ class Spines(MutableMapping):
     The container of all `.Spine`\s in an Axes.
 
     The interface is dict-like mapping names (e.g. 'left') to `.Spine` objects.
-    Additionally it implements some pandas.Series-like features like accessing
+    Additionally, it implements some pandas.Series-like features like accessing
     elements by attribute::
 
         spines['top'].set_visible(False)

@@ -257,6 +257,10 @@ title_fontsize : int or {'xx-small', 'x-small', 'small', 'medium', 'large', \
     to set the fontsize alongside other font properties, use the *size*
     parameter in *title_fontproperties*.
 
+alignment : {'center', 'left', 'right'}, default: 'center'
+    The alignment of the legend title and the box of entries. The entries
+    are aligned as a single block, so that markers always lined up.
+
 borderpad : float, default: :rc:`legend.borderpad`
     The fractional whitespace inside the legend border, in font-size units.
 
@@ -282,6 +286,9 @@ handler_map : dict or None
     The custom dictionary mapping instances or types to a legend
     handler. This *handler_map* updates the default handler map
     found at `matplotlib.legend.Legend.get_legend_handler_map`.
+
+draggable : bool, default: False
+    Whether the legend can be dragged with the mouse.
 """)
 
 
@@ -336,8 +343,10 @@ class Legend(Artist):
         frameon=None,         # draw frame
         handler_map=None,
         title_fontproperties=None,  # properties for the legend title
+        alignment="center",       # control the alignment within the legend box
         *,
-        ncol=1  # synonym for ncols (backward compatibility)
+        ncol=1,  # synonym for ncols (backward compatibility)
+        draggable=False  # whether the legend can be dragged with the mouse
     ):
         """
         Parameters
@@ -505,6 +514,9 @@ class Legend(Artist):
         )
         self._set_artist_props(self.legendPatch)
 
+        _api.check_in_list(["center", "left", "right"], alignment=alignment)
+        self._alignment = alignment
+
         # init with null renderer
         self._init_legend_box(handles, labels, markerfirst)
 
@@ -529,7 +541,9 @@ class Legend(Artist):
             title_prop_fp.set_size(title_fontsize)
 
         self.set_title(title, prop=title_prop_fp)
+
         self._draggable = None
+        self.set_draggable(state=draggable)
 
         # set the text color
 
@@ -548,10 +562,24 @@ class Legend(Artist):
         if isinstance(labelcolor, str) and labelcolor in color_getters:
             getter_names = color_getters[labelcolor]
             for handle, text in zip(self.legendHandles, self.texts):
+                try:
+                    if handle.get_array() is not None:
+                        continue
+                except AttributeError:
+                    pass
                 for getter_name in getter_names:
                     try:
                         color = getattr(handle, getter_name)()
-                        text.set_color(color)
+                        if isinstance(color, np.ndarray):
+                            if (
+                                    color.shape[0] == 1
+                                    or np.isclose(color, color[0]).all()
+                            ):
+                                text.set_color(color[0])
+                            else:
+                                pass
+                        else:
+                            text.set_color(color)
                         break
                     except AttributeError:
                         pass
@@ -804,7 +832,7 @@ class Legend(Artist):
         self._legend_title_box = TextArea("")
         self._legend_box = VPacker(pad=self.borderpad * fontsize,
                                    sep=self.labelspacing * fontsize,
-                                   align="center",
+                                   align=self._alignment,
                                    children=[self._legend_title_box,
                                              self._legend_handle_box])
         self._legend_box.set_figure(self.figure)
@@ -867,10 +895,41 @@ class Legend(Artist):
         r"""Return the list of `~.text.Text`\s in the legend."""
         return silent_list('Text', self.texts)
 
+    def set_alignment(self, alignment):
+        """
+        Set the alignment of the legend title and the box of entries.
+
+        The entries are aligned as a single block, so that markers always
+        lined up.
+
+        Parameters
+        ----------
+        alignment : {'center', 'left', 'right'}.
+
+        """
+        _api.check_in_list(["center", "left", "right"], alignment=alignment)
+        self._alignment = alignment
+        self._legend_box.align = alignment
+
+    def get_alignment(self):
+        """Get the alignment value of the legend box"""
+        return self._legend_box.align
+
     def set_title(self, title, prop=None):
         """
-        Set the legend title. Fontproperties can be optionally set
-        with *prop* parameter.
+        Set legend title and title style.
+
+        Parameters
+        ----------
+        title : str
+            The legend title.
+
+        prop : `.font_manager.FontProperties` or `str` or `pathlib.Path`
+            The font properties of the legend title.
+            If a `str`, it is interpreted as a fontconfig pattern parsed by
+            `.FontProperties`.  If a `pathlib.Path`, it is interpreted as the
+            absolute path to a font file.
+
         """
         self._legend_title_box._text.set_text(title)
         if title:
@@ -1101,7 +1160,7 @@ def _get_legend_handles(axs, legend_handler_map=None):
         label = handle.get_label()
         if label != '_nolegend_' and has_handler(handler_map, handle):
             yield handle
-        elif (label not in ['_nolegend_', ''] and
+        elif (label and not label.startswith('_') and
                 not has_handler(handler_map, handle)):
             _api.warn_external(
                              "Legend does not support handles for {0} "

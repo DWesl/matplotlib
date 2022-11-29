@@ -158,7 +158,7 @@ class RendererBase:
 
     * `draw_path`
     * `draw_image`
-    * `draw_gouraud_triangle`
+    * `draw_gouraud_triangles`
 
     The following methods *should* be implemented in the backend for
     optimization reasons:
@@ -221,7 +221,7 @@ class RendererBase:
                                rgbFace)
 
     def draw_path_collection(self, gc, master_transform, paths, all_transforms,
-                             offsets, offsetTrans, facecolors, edgecolors,
+                             offsets, offset_trans, facecolors, edgecolors,
                              linewidths, linestyles, antialiaseds, urls,
                              offset_position):
         """
@@ -230,7 +230,7 @@ class RendererBase:
         Each path is first transformed by the corresponding entry
         in *all_transforms* (a list of (3, 3) matrices) and then by
         *master_transform*.  They are then translated by the corresponding
-        entry in *offsets*, which has been first transformed by *offsetTrans*.
+        entry in *offsets*, which has been first transformed by *offset_trans*.
 
         *facecolors*, *edgecolors*, *linewidths*, *linestyles*, and
         *antialiased* are lists that set the corresponding properties.
@@ -251,8 +251,8 @@ class RendererBase:
                                                    paths, all_transforms)
 
         for xo, yo, path_id, gc0, rgbFace in self._iter_collection(
-                gc, master_transform, all_transforms, list(path_ids), offsets,
-                offsetTrans, facecolors, edgecolors, linewidths, linestyles,
+                gc, list(path_ids), offsets, offset_trans,
+                facecolors, edgecolors, linewidths, linestyles,
                 antialiaseds, urls, offset_position):
             path, transform = path_id
             # Only apply another translation if we have an offset, else we
@@ -286,6 +286,7 @@ class RendererBase:
             gc, master_transform, paths, [], offsets, offsetTrans, facecolors,
             edgecolors, linewidths, [], [antialiased], [None], 'screen')
 
+    @_api.deprecated("3.7", alternative="draw_gouraud_triangles")
     def draw_gouraud_triangle(self, gc, points, colors, transform):
         """
         Draw a Gouraud-shaded triangle.
@@ -317,9 +318,7 @@ class RendererBase:
         transform : `matplotlib.transforms.Transform`
             An affine transform to apply to the points.
         """
-        transform = transform.frozen()
-        for tri, col in zip(triangles_array, colors_array):
-            self.draw_gouraud_triangle(gc, tri, col, transform)
+        raise NotImplementedError
 
     def _iter_collection_raw_paths(self, master_transform, paths,
                                    all_transforms):
@@ -367,8 +366,7 @@ class RendererBase:
         N = max(Npath_ids, len(offsets))
         return (N + Npath_ids - 1) // Npath_ids
 
-    def _iter_collection(self, gc, master_transform, all_transforms,
-                         path_ids, offsets, offsetTrans, facecolors,
+    def _iter_collection(self, gc, path_ids, offsets, offset_trans, facecolors,
                          edgecolors, linewidths, linestyles,
                          antialiaseds, urls, offset_position):
         """
@@ -414,7 +412,7 @@ class RendererBase:
                     else itertools.repeat(default))
 
         pathids = cycle_or_default(path_ids)
-        toffsets = cycle_or_default(offsetTrans.transform(offsets), (0, 0))
+        toffsets = cycle_or_default(offset_trans.transform(offsets), (0, 0))
         fcs = cycle_or_default(facecolors)
         ecs = cycle_or_default(edgecolors)
         lws = cycle_or_default(linewidths)
@@ -505,6 +503,24 @@ class RendererBase:
 
     def draw_tex(self, gc, x, y, s, prop, angle, *, mtext=None):
         """
+        Draw a TeX instance.
+
+        Parameters
+        ----------
+        gc : `.GraphicsContextBase`
+            The graphics context.
+        x : float
+            The x location of the text in display coords.
+        y : float
+            The y location of the text baseline in display coords.
+        s : str
+            The TeX text string.
+        prop : `matplotlib.font_manager.FontProperties`
+            The font properties.
+        angle : float
+            The rotation angle in degrees anti-clockwise.
+        mtext : `matplotlib.text.Text`
+            The original text object to be rendered.
         """
         self._draw_text_as_path(gc, x, y, s, prop, angle, ismath="TeX")
 
@@ -526,6 +542,8 @@ class RendererBase:
             The font properties.
         angle : float
             The rotation angle in degrees anti-clockwise.
+        ismath : bool or "TeX"
+            If True, use mathtext parser. If "TeX", use *usetex* mode.
         mtext : `matplotlib.text.Text`
             The original text object to be rendered.
 
@@ -609,8 +627,8 @@ class RendererBase:
         fontsize = prop.get_size_in_points()
 
         if ismath == 'TeX':
-            # todo: handle props
-            return TexManager().get_text_width_height_descent(
+            # todo: handle properties
+            return self.get_texmanager().get_text_width_height_descent(
                 s, fontsize, renderer=self)
 
         dpi = self.points_to_pixels(72)
@@ -1446,7 +1464,7 @@ class PickEvent(Event):
             line = event.artist
             xdata, ydata = line.get_data()
             ind = event.ind
-            print('on pick line:', np.array([xdata[ind], ydata[ind]]).T)
+            print(f'on pick line: {xdata[ind]:.3f}, {ydata[ind]:.3f}')
 
         cid = fig.canvas.mpl_connect('pick_event', on_pick)
     """
@@ -1536,8 +1554,7 @@ def _mouse_handler(event):
 
 def _get_renderer(figure, print_method=None):
     """
-    Get the renderer that would be used to save a `.Figure`, and cache it on
-    the figure.
+    Get the renderer that would be used to save a `.Figure`.
 
     If you need a renderer without any active draw methods use
     renderer._draw_disabled to temporary patch them out at your call site.
@@ -1560,7 +1577,7 @@ def _get_renderer(figure, print_method=None):
         try:
             print_method(io.BytesIO())
         except Done as exc:
-            renderer, = figure._cachedRenderer, = exc.args
+            renderer, = exc.args
             return renderer
         else:
             raise RuntimeError(f"{print_method} did not call Figure.draw, so "
@@ -2332,7 +2349,7 @@ class FigureCanvasBase:
                 _bbox_inches_restore = None
 
             # we have already done layout above, so turn it off:
-            stack.enter_context(self.figure._cm_set(layout_engine=None))
+            stack.enter_context(self.figure._cm_set(layout_engine='none'))
             try:
                 # _get_renderer may change the figure dpi (as vector formats
                 # force the figure dpi to 72), so we need to set it again here.
@@ -2422,6 +2439,14 @@ class FigureCanvasBase:
             additionally, the variables ``xdata`` and ``ydata`` attributes will
             be set to the mouse location in data coordinates.  See `.KeyEvent`
             and `.MouseEvent` for more info.
+
+            .. note::
+
+                If func is a method, this only stores a weak reference to the
+                method. Thus, the figure does not influence the lifetime of
+                the associated object. Usually, you want to make sure that the
+                object is kept alive throughout the lifetime of the figure by
+                holding a reference to it.
 
         Returns
         -------
@@ -2822,6 +2847,53 @@ class FigureManagerBase:
         setting up the canvas or the manager.
         """
         return cls(canvas_class(figure), num)
+
+    @classmethod
+    def start_main_loop(cls):
+        """
+        Start the main event loop.
+
+        This method is called by `.FigureManagerBase.pyplot_show`, which is the
+        implementation of `.pyplot.show`.  To customize the behavior of
+        `.pyplot.show`, interactive backends should usually override
+        `~.FigureManagerBase.start_main_loop`; if more customized logic is
+        necessary, `~.FigureManagerBase.pyplot_show` can also be overridden.
+        """
+
+    @classmethod
+    def pyplot_show(cls, *, block=None):
+        """
+        Show all figures.  This method is the implementation of `.pyplot.show`.
+
+        To customize the behavior of `.pyplot.show`, interactive backends
+        should usually override `~.FigureManagerBase.start_main_loop`; if more
+        customized logic is necessary, `~.FigureManagerBase.pyplot_show` can
+        also be overridden.
+
+        Parameters
+        ----------
+        block : bool, optional
+            Whether to block by calling ``start_main_loop``.  The default,
+            None, means to block if we are neither in IPython's ``%pylab`` mode
+            nor in ``interactive`` mode.
+        """
+        managers = Gcf.get_all_fig_managers()
+        if not managers:
+            return
+        for manager in managers:
+            try:
+                manager.show()  # Emits a warning for non-interactive backend.
+            except NonGuiException as exc:
+                _api.warn_external(str(exc))
+        if block is None:
+            # Hack: Are we in IPython's %pylab mode?  In pylab mode, IPython
+            # (>= 0.10) tacks a _needmain attribute onto pyplot.show (always
+            # set to False).
+            ipython_pylab = hasattr(
+                getattr(sys.modules.get("pyplot"), "show", None), "_needmain")
+            block = not ipython_pylab and not is_interactive()
+        if block:
+            cls.start_main_loop()
 
     def show(self):
         """
@@ -3297,18 +3369,6 @@ class NavigationToolbar2:
         """Save the current figure."""
         raise NotImplementedError
 
-    @_api.deprecated("3.5", alternative="`.FigureCanvasBase.set_cursor`")
-    def set_cursor(self, cursor):
-        """
-        Set the current cursor to one of the :class:`Cursors` enums values.
-
-        If required by the backend, this method should trigger an update in
-        the backend event loop after the cursor is set, as this method may be
-        called e.g. before a long-running task during which the GUI is not
-        updated.
-        """
-        self.canvas.set_cursor(cursor)
-
     def update(self):
         """Reset the Axes stack."""
         self._nav_stack.clear()
@@ -3513,7 +3573,12 @@ class _Backend:
 
     @classmethod
     def draw_if_interactive(cls):
-        if cls.mainloop is not None and is_interactive():
+        manager_class = cls.FigureCanvas.manager_class
+        # Interactive backends reimplement start_main_loop or pyplot_show.
+        backend_is_interactive = (
+            manager_class.start_main_loop != FigureManagerBase.start_main_loop
+            or manager_class.pyplot_show != FigureManagerBase.pyplot_show)
+        if backend_is_interactive and is_interactive():
             manager = Gcf.get_active()
             if manager:
                 manager.canvas.draw_idle()
@@ -3541,8 +3606,8 @@ class _Backend:
             # Hack: Are we in IPython's %pylab mode?  In pylab mode, IPython
             # (>= 0.10) tacks a _needmain attribute onto pyplot.show (always
             # set to False).
-            from matplotlib import pyplot
-            ipython_pylab = hasattr(pyplot.show, "_needmain")
+            ipython_pylab = hasattr(
+                getattr(sys.modules.get("pyplot"), "show", None), "_needmain")
             block = not ipython_pylab and not is_interactive()
         if block:
             cls.mainloop()

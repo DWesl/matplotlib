@@ -2,10 +2,13 @@
 A directive for including a Matplotlib plot in a Sphinx document
 ================================================================
 
-By default, in HTML output, `plot` will include a .png file with a link to a
-high-res .png and .pdf.  In LaTeX output, it will include a .pdf.
+This is a Sphinx extension providing a reStructuredText directive
+``.. plot::`` for including a plot in a Sphinx document.
 
-The source code for the plot may be included in one of three ways:
+In HTML output, ``.. plot::`` will include a .png file with a link
+to a high-res .png and .pdf.  In LaTeX output, it will include a .pdf.
+
+The plot content may be defined in one of three ways:
 
 1. **A path to a source file** as the argument to the directive::
 
@@ -28,10 +31,8 @@ The source code for the plot may be included in one of three ways:
      .. plot::
 
         import matplotlib.pyplot as plt
-        import matplotlib.image as mpimg
-        import numpy as np
-        img = mpimg.imread('_static/stinkbug.png')
-        imgplot = plt.imshow(img)
+        plt.plot([1, 2, 3], [4, 5, 6])
+        plt.title("A plotting exammple")
 
 3. Using **doctest** syntax::
 
@@ -44,22 +45,27 @@ The source code for the plot may be included in one of three ways:
 Options
 -------
 
-The ``plot`` directive supports the following options:
+The ``.. plot::`` directive supports the following options:
 
-    format : {'python', 'doctest'}
+    ``:format:`` : {'python', 'doctest'}
         The format of the input.  If unset, the format is auto-detected.
 
-    include-source : bool
+    ``:include-source:`` : bool
         Whether to display the source code. The default can be changed using
-        the `plot_include_source` variable in :file:`conf.py` (which itself
+        the ``plot_include_source`` variable in :file:`conf.py` (which itself
         defaults to False).
 
-    encoding : str
+    ``:show-source-link:`` : bool
+        Whether to show a link to the source in HTML. The default can be
+        changed using the ``plot_html_show_source_link`` variable in
+        :file:`conf.py` (which itself defaults to True).
+
+    ``:encoding:`` : str
         If this source file is in a non-UTF8 or non-ASCII encoding, the
         encoding must be specified using the ``:encoding:`` option.  The
         encoding will not be inferred using the ``-*- coding -*-`` metacomment.
 
-    context : bool or str
+    ``:context:`` : bool or str
         If provided, the code will be run in the context of all previous plot
         directives for which the ``:context:`` option was specified.  This only
         applies to inline code plot directives, not those run from files. If
@@ -68,18 +74,19 @@ The ``plot`` directive supports the following options:
         running the code. ``:context: close-figs`` keeps the context but closes
         previous figures before running the code.
 
-    nofigs : bool
+    ``:nofigs:`` : bool
         If specified, the code block will be run, but no figures will be
         inserted.  This is usually useful with the ``:context:`` option.
 
-    caption : str
+    ``:caption:`` : str
         If specified, the option's argument will be used as a caption for the
         figure. This overwrites the caption given in the content, when the plot
         is generated from a file.
 
-Additionally, this directive supports all of the options of the `image`
-directive, except for *target* (since plot will add its own target).  These
-include *alt*, *height*, *width*, *scale*, *align* and *class*.
+Additionally, this directive supports all the options of the `image directive
+<https://docutils.sourceforge.io/docs/ref/rst/directives.html#image>`_,
+except for ``:target:`` (since plot will add its own target).  These include
+``:alt:``, ``:height:``, ``:width:``, ``:scale:``, ``:align:`` and ``:class:``.
 
 Configuration options
 ---------------------
@@ -243,6 +250,7 @@ class PlotDirective(Directive):
         'align': Image.align,
         'class': directives.class_option,
         'include-source': _option_boolean,
+        'show-source-link': _option_boolean,
         'format': _option_format,
         'context': _option_context,
         'nofigs': directives.flag,
@@ -264,7 +272,8 @@ def _copy_css_file(app, exc):
         src = cbook._get_data_path('plot_directive/plot_directive.css')
         dst = app.outdir / Path('_static')
         dst.mkdir(exist_ok=True)
-        shutil.copy(src, dst)
+        # Use copyfile because we do not want to copy src's permissions.
+        shutil.copyfile(src, dst / Path('plot_directive.css'))
 
 
 def setup(app):
@@ -360,16 +369,16 @@ TEMPLATE = """
 
 .. only:: html
 
-   {% if source_link or (html_show_formats and not multi_image) %}
+   {% if src_name or (html_show_formats and not multi_image) %}
    (
-   {%- if source_link -%}
-   `Source code <{{ source_link }}>`__
+   {%- if src_name -%}
+   :download:`Source code <{{ build_dir }}/{{ src_name }}>`
    {%- endif -%}
    {%- if html_show_formats and not multi_image -%}
      {%- for img in images -%}
        {%- for fmt in img.formats -%}
-         {%- if source_link or not loop.first -%}, {% endif -%}
-         `{{ fmt }} <{{ dest_dir }}/{{ img.basename }}.{{ fmt }}>`__
+         {%- if src_name or not loop.first -%}, {% endif -%}
+         :download:`{{ fmt }} <{{ build_dir }}/{{ img.basename }}.{{ fmt }}>`
        {%- endfor -%}
      {%- endfor -%}
    {%- endif -%}
@@ -386,7 +395,7 @@ TEMPLATE = """
         (
         {%- for fmt in img.formats -%}
         {%- if not loop.first -%}, {% endif -%}
-        `{{ fmt }} <{{ dest_dir }}/{{ img.basename }}.{{ fmt }}>`__
+        :download:`{{ fmt }} <{{ build_dir }}/{{ img.basename }}.{{ fmt }}>`
         {%- endfor -%}
         )
       {%- endif -%}
@@ -483,13 +492,13 @@ def _run_code(code, code_path, ns=None, function_name=None):
         try:
             os.chdir(setup.config.plot_working_directory)
         except OSError as err:
-            raise OSError(str(err) + '\n`plot_working_directory` option in'
-                          'Sphinx configuration file must be a valid '
-                          'directory path') from err
+            raise OSError(f'{err}\n`plot_working_directory` option in '
+                          f'Sphinx configuration file must be a valid '
+                          f'directory path') from err
         except TypeError as err:
-            raise TypeError(str(err) + '\n`plot_working_directory` option in '
-                            'Sphinx configuration file must be a string or '
-                            'None') from err
+            raise TypeError(f'{err}\n`plot_working_directory` option in '
+                            f'Sphinx configuration file must be a string or '
+                            f'None') from err
     elif code_path is not None:
         dirname = os.path.abspath(os.path.dirname(code_path))
         os.chdir(dirname)
@@ -663,6 +672,7 @@ def run(arguments, content, options, state_machine, state, lineno):
     default_fmt = formats[0][0]
 
     options.setdefault('include-source', config.plot_include_source)
+    options.setdefault('show-source-link', config.plot_html_show_source_link)
     if 'class' in options:
         # classes are parsed into a list of string, and output by simply
         # printing the list, abusing the fact that RST guarantees to strip
@@ -746,21 +756,13 @@ def run(arguments, content, options, state_machine, state, lineno):
     build_dir = os.path.normpath(build_dir)
     os.makedirs(build_dir, exist_ok=True)
 
-    # output_dir: final location in the builder's directory
-    dest_dir = os.path.abspath(os.path.join(setup.app.builder.outdir,
-                                            source_rel_dir))
-    os.makedirs(dest_dir, exist_ok=True)
-
     # how to link to files from the RST file
-    dest_dir_link = os.path.join(relpath(setup.confdir, rst_dir),
-                                 source_rel_dir).replace(os.path.sep, '/')
     try:
         build_dir_link = relpath(build_dir, rst_dir).replace(os.path.sep, '/')
     except ValueError:
         # on Windows, relpath raises ValueError when path and start are on
         # different mounts/drives
         build_dir_link = build_dir
-    source_link = dest_dir_link + '/' + output_base + source_ext
 
     # get list of included rst files so that the output is updated when any
     # plots in the included files change. These attributes are modified by the
@@ -780,6 +782,14 @@ def run(arguments, content, options, state_machine, state, lineno):
         source_file_includes.remove(source_file_name)
     except ValueError:
         pass
+
+    # save script (if necessary)
+    if options['show-source-link']:
+        Path(build_dir, output_base + source_ext).write_text(
+            doctest.script_from_examples(code)
+            if source_file_name == rst_file and is_doctest
+            else code,
+            encoding='utf-8')
 
     # make figures
     try:
@@ -827,18 +837,17 @@ def run(arguments, content, options, state_machine, state, lineno):
             ':%s: %s' % (key, val) for key, val in options.items()
             if key in ('alt', 'height', 'width', 'scale', 'align', 'class')]
 
-        # Not-None src_link signals the need for a source link in the generated
-        # html
-        if j == 0 and config.plot_html_show_source_link:
-            src_link = source_link
+        # Not-None src_name signals the need for a source download in the
+        # generated html
+        if j == 0 and options['show-source-link']:
+            src_name = output_base + source_ext
         else:
-            src_link = None
+            src_name = None
 
         result = jinja2.Template(config.plot_template or TEMPLATE).render(
             default_fmt=default_fmt,
-            dest_dir=dest_dir_link,
             build_dir=build_dir_link,
-            source_link=src_link,
+            src_name=src_name,
             multi_image=len(images) > 1,
             options=opts,
             images=images,
@@ -851,23 +860,5 @@ def run(arguments, content, options, state_machine, state, lineno):
 
     if total_lines:
         state_machine.insert_input(total_lines, source=source_file_name)
-
-    # copy image files to builder's output directory, if necessary
-    Path(dest_dir).mkdir(parents=True, exist_ok=True)
-
-    for code_piece, images in results:
-        for img in images:
-            for fn in img.filenames():
-                destimg = os.path.join(dest_dir, os.path.basename(fn))
-                if fn != destimg:
-                    shutil.copyfile(fn, destimg)
-
-    # copy script (if necessary)
-    if config.plot_html_show_source_link:
-        Path(dest_dir, output_base + source_ext).write_text(
-            doctest.script_from_examples(code)
-            if source_file_name == rst_file and is_doctest
-            else code,
-            encoding='utf-8')
 
     return errors

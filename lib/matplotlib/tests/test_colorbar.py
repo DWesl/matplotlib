@@ -1,8 +1,11 @@
 import numpy as np
 import pytest
 
+from matplotlib import _api
 from matplotlib import cm
 import matplotlib.colors as mcolors
+import matplotlib as mpl
+
 
 from matplotlib import rc_context
 from matplotlib.testing.decorators import image_comparison
@@ -24,7 +27,7 @@ def _get_cmap_norms():
     colorbar_extension_length.
     """
     # Create a colormap and specify the levels it represents.
-    cmap = cm.get_cmap("RdBu", lut=5)
+    cmap = mpl.colormaps["RdBu"].resampled(5)
     clevs = [-5., -2.5, -.5, .5, 1.5, 3.5]
     # Define norms for the colormaps.
     norms = dict()
@@ -132,8 +135,8 @@ def test_colorbar_extension_inverted_axis(orientation, extend, expected):
     """Test extension color with an inverted axis"""
     data = np.arange(12).reshape(3, 4)
     fig, ax = plt.subplots()
-    cmap = plt.get_cmap("viridis").with_extremes(under=(0, 0, 0, 1),
-                                                 over=(1, 1, 1, 1))
+    cmap = mpl.colormaps["viridis"].with_extremes(under=(0, 0, 0, 1),
+                                                  over=(1, 1, 1, 1))
     im = ax.imshow(data, cmap=cmap)
     cbar = fig.colorbar(im, orientation=orientation, extend=extend)
     if orientation == "horizontal":
@@ -268,7 +271,7 @@ def test_colorbar_single_scatter():
     plt.figure()
     x = y = [0]
     z = [50]
-    cmap = plt.get_cmap('jet', 16)
+    cmap = mpl.colormaps['jet'].resampled(16)
     cs = plt.scatter(x, y, z, c=z, cmap=cmap)
     plt.colorbar(cs)
 
@@ -280,7 +283,7 @@ def test_remove_from_figure(use_gridspec):
     Test `remove` with the specified ``use_gridspec`` setting
     """
     fig, ax = plt.subplots()
-    sc = ax.scatter([1, 2], [3, 4], cmap="spring")
+    sc = ax.scatter([1, 2], [3, 4])
     sc.set_array(np.array([5, 6]))
     pre_position = ax.get_position()
     cb = fig.colorbar(sc, use_gridspec=use_gridspec)
@@ -296,7 +299,7 @@ def test_remove_from_figure_cl():
     Test `remove` with constrained_layout
     """
     fig, ax = plt.subplots(constrained_layout=True)
-    sc = ax.scatter([1, 2], [3, 4], cmap="spring")
+    sc = ax.scatter([1, 2], [3, 4])
     sc.set_array(np.array([5, 6]))
     fig.draw_without_rendering()
     pre_position = ax.get_position()
@@ -314,6 +317,15 @@ def test_colorbarbase():
     Colorbar(ax, cmap=plt.cm.bone)
 
 
+def test_parentless_mappable():
+    pc = mpl.collections.PatchCollection([], cmap=plt.get_cmap('viridis'))
+    pc.set_array([])
+
+    with pytest.warns(_api.MatplotlibDeprecationWarning,
+                      match='Unable to determine Axes to steal'):
+        plt.colorbar(pc)
+
+
 @image_comparison(['colorbar_closed_patch.png'], remove_text=True)
 def test_colorbar_closed_patch():
     # Remove this line when this test image is regenerated.
@@ -326,7 +338,7 @@ def test_colorbar_closed_patch():
     ax4 = fig.add_axes([0.05, 0.25, 0.9, 0.1])
     ax5 = fig.add_axes([0.05, 0.05, 0.9, 0.1])
 
-    cmap = cm.get_cmap("RdBu", lut=5)
+    cmap = mpl.colormaps["RdBu"].resampled(5)
 
     im = ax1.pcolormesh(np.linspace(0, 10, 16).reshape((4, 4)), cmap=cmap)
 
@@ -674,7 +686,7 @@ def test_colorbar_inverted_ticks():
 def test_mappable_no_alpha():
     fig, ax = plt.subplots()
     sm = cm.ScalarMappable(norm=mcolors.Normalize(), cmap='viridis')
-    fig.colorbar(sm)
+    fig.colorbar(sm, ax=ax)
     sm.set_cmap('plasma')
     plt.draw()
 
@@ -710,6 +722,17 @@ def test_colorbar_label():
 
     cbar3 = fig.colorbar(im, orientation='horizontal', label='horizontal cbar')
     assert cbar3.ax.get_xlabel() == 'horizontal cbar'
+
+
+@image_comparison(['colorbar_keeping_xlabel.png'], style='mpl20')
+def test_keeping_xlabel():
+    # github issue #23398 - xlabels being ignored in colorbar axis
+    arr = np.arange(25).reshape((5, 5))
+    fig, ax = plt.subplots()
+    im = ax.imshow(arr)
+    cbar = plt.colorbar(im)
+    cbar.ax.set_xlabel('Visible Xlabel')
+    cbar.set_label('YLabel')
 
 
 @pytest.mark.parametrize("clim", [(-20000, 20000), (-32768, 0)])
@@ -931,33 +954,86 @@ def test_proportional_colorbars():
             fig.colorbar(CS3, spacing=spacings[j], ax=axs[i, j])
 
 
-@pytest.mark.parametrize("extend, coloroffset, res", [
-    ('both', 1, [np.array([[0., 0.], [0., 1.]]),
-                 np.array([[1., 0.], [1., 1.]]),
-                 np.array([[2., 0.], [2., 1.]])]),
-    ('min', 0, [np.array([[0., 0.], [0., 1.]]),
-                np.array([[1., 0.], [1., 1.]])]),
-    ('max', 0, [np.array([[1., 0.], [1., 1.]]),
-                np.array([[2., 0.], [2., 1.]])]),
-    ('neither', -1, [np.array([[1., 0.], [1., 1.]])])
-    ])
-def test_colorbar_extend_drawedges(extend, coloroffset, res):
-    cmap = plt.get_cmap("viridis")
-    bounds = np.arange(3)
-    nb_colors = len(bounds) + coloroffset
-    colors = cmap(np.linspace(100, 255, nb_colors).astype(int))
-    cmap, norm = mcolors.from_levels_and_colors(bounds, colors, extend=extend)
+@image_comparison(['extend_drawedges.png'], remove_text=True, style='mpl20')
+def test_colorbar_extend_drawedges():
+    params = [
+        ('both', 1, [[[1.1, 0], [1.1, 1]],
+                     [[2, 0], [2, 1]],
+                     [[2.9, 0], [2.9, 1]]]),
+        ('min', 0, [[[1.1, 0], [1.1, 1]],
+                    [[2, 0], [2, 1]]]),
+        ('max', 0, [[[2, 0], [2, 1]],
+                    [[2.9, 0], [2.9, 1]]]),
+        ('neither', -1, [[[2, 0], [2, 1]]]),
+    ]
 
-    plt.figure(figsize=(5, 1))
-    ax = plt.subplot(111)
-    cbar = Colorbar(ax, cmap=cmap, norm=norm, orientation='horizontal',
-                    drawedges=True)
-    assert np.all(np.equal(cbar.dividers.get_segments(), res))
+    plt.rcParams['axes.linewidth'] = 2
+
+    fig = plt.figure(figsize=(10, 4))
+    subfigs = fig.subfigures(1, 2)
+
+    for orientation, subfig in zip(['horizontal', 'vertical'], subfigs):
+        if orientation == 'horizontal':
+            axs = subfig.subplots(4, 1)
+        else:
+            axs = subfig.subplots(1, 4)
+        fig.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95)
+
+        for ax, (extend, coloroffset, res) in zip(axs, params):
+            cmap = mpl.colormaps["viridis"]
+            bounds = np.arange(5)
+            nb_colors = len(bounds) + coloroffset
+            colors = cmap(np.linspace(100, 255, nb_colors).astype(int))
+            cmap, norm = mcolors.from_levels_and_colors(bounds, colors,
+                                                        extend=extend)
+
+            cbar = Colorbar(ax, cmap=cmap, norm=norm, orientation=orientation,
+                            drawedges=True)
+            # Set limits such that only two colours are visible, and the
+            # dividers would be outside the Axes, to ensure that a) they are
+            # not drawn outside, and b) a divider still appears between the
+            # main colour and the extension.
+            if orientation == 'horizontal':
+                ax.set_xlim(1.1, 2.9)
+            else:
+                ax.set_ylim(1.1, 2.9)
+                res = np.array(res)[:, :, [1, 0]]
+            np.testing.assert_array_equal(cbar.dividers.get_segments(), res)
+
+
+@image_comparison(['contourf_extend_patches.png'], remove_text=True,
+                  style='mpl20')
+def test_colorbar_contourf_extend_patches():
+    params = [
+        ('both', 5, ['\\', '//']),
+        ('min', 7, ['+']),
+        ('max', 2, ['|', '-', '/', '\\', '//']),
+        ('neither', 10, ['//', '\\', '||']),
+    ]
+
+    plt.rcParams['axes.linewidth'] = 2
+
+    fig = plt.figure(figsize=(10, 4))
+    subfigs = fig.subfigures(1, 2)
+    fig.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95)
+
+    x = np.linspace(-2, 3, 50)
+    y = np.linspace(-2, 3, 30)
+    z = np.cos(x[np.newaxis, :]) + np.sin(y[:, np.newaxis])
+
+    cmap = mpl.colormaps["viridis"]
+    for orientation, subfig in zip(['horizontal', 'vertical'], subfigs):
+        axs = subfig.subplots(2, 2).ravel()
+        for ax, (extend, levels, hatches) in zip(axs, params):
+            cs = ax.contourf(x, y, z, levels, hatches=hatches,
+                             cmap=cmap, extend=extend)
+            subfig.colorbar(cs, ax=ax, orientation=orientation, fraction=0.4,
+                            extendfrac=0.2, aspect=5)
 
 
 def test_negative_boundarynorm():
     fig, ax = plt.subplots(figsize=(1, 3))
-    cmap = plt.get_cmap("viridis")
+    cmap = mpl.colormaps["viridis"]
 
     clevs = np.arange(-94, -85)
     norm = BoundaryNorm(clevs, cmap.N)
@@ -984,6 +1060,17 @@ def test_negative_boundarynorm():
     np.testing.assert_allclose(cb.ax.get_yticks(), clevs)
 
 
+def test_centerednorm():
+    # Test default centered norm gets expanded with non-singular limits
+    # when plot data is all equal (autoscale halfrange == 0)
+    fig, ax = plt.subplots(figsize=(1, 3))
+
+    norm = mcolors.CenteredNorm()
+    mappable = ax.pcolormesh(np.zeros((3, 3)), norm=norm)
+    fig.colorbar(mappable)
+    assert (norm.vmin, norm.vmax) == (-0.1, 0.1)
+
+
 @image_comparison(['nonorm_colorbars.svg'], style='mpl20')
 def test_nonorm():
     plt.rcParams['svg.fonttype'] = 'none'
@@ -993,7 +1080,7 @@ def test_nonorm():
     fig.subplots_adjust(bottom=0.5)
 
     norm = NoNorm(vmin=min(data), vmax=max(data))
-    cmap = cm.get_cmap("viridis", len(data))
+    cmap = mpl.colormaps["viridis"].resampled(len(data))
     mappable = cm.ScalarMappable(norm=norm, cmap=cmap)
     cbar = fig.colorbar(mappable, cax=ax, orientation="horizontal")
 
@@ -1048,6 +1135,14 @@ def test_colorbar_set_formatter_locator():
     assert cb.ax.yaxis.get_minor_formatter() is fmt
 
 
+@image_comparison(['colorbar_extend_alpha.png'], remove_text=True,
+                  savefig_kwarg={'dpi': 40})
+def test_colorbar_extend_alpha():
+    fig, ax = plt.subplots()
+    im = ax.imshow([[0, 1], [2, 3]], alpha=0.3, interpolation="none")
+    fig.colorbar(im, extend='both', boundaries=[0.5, 1.5, 2.5])
+
+
 def test_offset_text_loc():
     plt.style.use('mpl20')
     fig, ax = plt.subplots()
@@ -1073,3 +1168,34 @@ def test_title_text_loc():
     # colorbar axes, including its extend triangles....
     assert (cb.ax.title.get_window_extent(fig.canvas.get_renderer()).ymax >
             cb.ax.spines['outline'].get_window_extent().ymax)
+
+
+@check_figures_equal(extensions=["png"])
+def test_passing_location(fig_ref, fig_test):
+    ax_ref = fig_ref.add_subplot()
+    im = ax_ref.imshow([[0, 1], [2, 3]])
+    ax_ref.figure.colorbar(im, cax=ax_ref.inset_axes([0, 1.05, 1, 0.05]),
+                           orientation="horizontal", ticklocation="top")
+    ax_test = fig_test.add_subplot()
+    im = ax_test.imshow([[0, 1], [2, 3]])
+    ax_test.figure.colorbar(im, cax=ax_test.inset_axes([0, 1.05, 1, 0.05]),
+                            location="top")
+
+
+@pytest.mark.parametrize("kwargs,error,message", [
+    ({'location': 'top', 'orientation': 'vertical'}, TypeError,
+     "location and orientation are mutually exclusive"),
+    ({'location': 'top', 'orientation': 'vertical', 'cax': True}, TypeError,
+     "location and orientation are mutually exclusive"),  # Different to above
+    ({'ticklocation': 'top', 'orientation': 'vertical', 'cax': True},
+     ValueError, "'top' is not a valid value for position"),
+    ({'location': 'top', 'extendfrac': (0, None)}, ValueError,
+     "invalid value for extendfrac"),
+    ])
+def test_colorbar_errors(kwargs, error, message):
+    fig, ax = plt.subplots()
+    im = ax.imshow([[0, 1], [2, 3]])
+    if kwargs.get('cax', None) is True:
+        kwargs['cax'] = ax.inset_axes([0, 1.05, 1, 0.05])
+    with pytest.raises(error, match=message):
+        fig.colorbar(im, **kwargs)

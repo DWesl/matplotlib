@@ -39,7 +39,7 @@ import matplotlib as mpl
 from matplotlib._animation_data import (
     DISPLAY_TEMPLATE, INCLUDED_FRAMES, JS_INCLUDE, STYLE_INCLUDE)
 from matplotlib import _api, cbook
-
+import matplotlib.colors as mcolors
 
 _log = logging.getLogger(__name__)
 
@@ -660,7 +660,7 @@ class ImageMagickBase:
 @writers.register('imagemagick')
 class ImageMagickWriter(ImageMagickBase, MovieWriter):
     """
-    Pipe-based animated gif.
+    Pipe-based animated gif writer.
 
     Frames are streamed directly to ImageMagick via a pipe and written
     in a single pass.
@@ -686,10 +686,9 @@ class ImageMagickFileWriter(ImageMagickBase, FileMovieWriter):
 
 # Taken directly from jakevdp's JSAnimation package at
 # http://github.com/jakevdp/JSAnimation
-def _included_frames(paths, frame_format):
-    """paths should be a list of Paths"""
-    return INCLUDED_FRAMES.format(Nframes=len(paths),
-                                  frame_dir=paths[0].parent,
+def _included_frames(frame_count, frame_format, frame_dir):
+    return INCLUDED_FRAMES.format(Nframes=frame_count,
+                                  frame_dir=frame_dir,
                                   frame_format=frame_format)
 
 
@@ -736,7 +735,7 @@ class HTMLWriter(FileMovieWriter):
 
         super().__init__(fps, codec, bitrate, extra_args, metadata)
 
-    def setup(self, fig, outfile, dpi, frame_dir=None):
+    def setup(self, fig, outfile, dpi=None, frame_dir=None):
         outfile = Path(outfile)
         _api.check_in_list(['.html', '.htm'], outfile_extension=outfile.suffix)
 
@@ -783,11 +782,13 @@ class HTMLWriter(FileMovieWriter):
         if self.embed_frames:
             fill_frames = _embedded_frames(self._saved_frames,
                                            self.frame_format)
-            Nframes = len(self._saved_frames)
+            frame_count = len(self._saved_frames)
         else:
             # temp names is filled by FileMovieWriter
-            fill_frames = _included_frames(self._temp_paths, self.frame_format)
-            Nframes = len(self._temp_paths)
+            frame_count = len(self._temp_paths)
+            fill_frames = _included_frames(
+                frame_count, self.frame_format,
+                self._temp_paths[0].parent.relative_to(self.outfile.parent))
         mode_dict = dict(once_checked='',
                          loop_checked='',
                          reflect_checked='')
@@ -798,7 +799,7 @@ class HTMLWriter(FileMovieWriter):
         with open(self.outfile, 'w') as of:
             of.write(JS_INCLUDE + STYLE_INCLUDE)
             of.write(DISPLAY_TEMPLATE.format(id=uuid.uuid4().hex,
-                                             Nframes=Nframes,
+                                             Nframes=frame_count,
                                              fill_frames=fill_frames,
                                              interval=interval,
                                              **mode_dict))
@@ -840,7 +841,8 @@ class Animation:
         system notifications.
 
     blit : bool, default: False
-        Whether blitting is used to optimize drawing.
+        Whether blitting is used to optimize drawing.  If the backend does not
+        support blitting, then this parameter has no effect.
 
     See Also
     --------
@@ -956,7 +958,7 @@ class Animation:
         extra_anim : list, default: []
             Additional `Animation` objects that should be included
             in the saved movie file. These need to be from the same
-            `matplotlib.figure.Figure` instance. Also, animation frames will
+            `.Figure` instance. Also, animation frames will
             just be simply combined, so there should be a 1:1 correspondence
             between the frames from the different animations.
 
@@ -977,8 +979,7 @@ class Animation:
 
             Example code to write the progress to stdout::
 
-                progress_callback =\
-                    lambda i, n: print(f'Saving frame {i} of {n}')
+                progress_callback = lambda i, n: print(f'Saving frame {i}/{n}')
 
         Notes
         -----
@@ -1002,6 +1003,9 @@ class Animation:
 
         if savefig_kwargs is None:
             savefig_kwargs = {}
+        else:
+            # we are going to mutate this below
+            savefig_kwargs = dict(savefig_kwargs)
 
         if fps is None and hasattr(self, '_interval'):
             # Convert interval in ms to frames per second
@@ -1025,9 +1029,8 @@ class Animation:
 
         all_anim = [self]
         if extra_anim is not None:
-            all_anim.extend(anim
-                            for anim
-                            in extra_anim if anim._fig is self._fig)
+            all_anim.extend(anim for anim in extra_anim
+                            if anim._fig is self._fig)
 
         # If we have the name of a writer, instantiate an instance of the
         # registered class.
@@ -1057,6 +1060,18 @@ class Animation:
             _log.info("Disabling savefig.bbox = 'tight', as it may cause "
                       "frame size to vary, which is inappropriate for "
                       "animation.")
+
+        facecolor = savefig_kwargs.get('facecolor',
+                                       mpl.rcParams['savefig.facecolor'])
+        if facecolor == 'auto':
+            facecolor = self._fig.get_facecolor()
+
+        def _pre_composite_to_white(color):
+            r, g, b, a = mcolors.to_rgba(color)
+            return a * np.array([r, g, b]) + 1 - a
+
+        savefig_kwargs['facecolor'] = _pre_composite_to_white(facecolor)
+        savefig_kwargs['transparent'] = False   # just to be safe!
         # canvas._is_saving = True makes the draw_event animation-starting
         # callback a no-op; canvas.manager = None prevents resizing the GUI
         # widget (both are likewise done in savefig()).
@@ -1426,7 +1441,8 @@ class TimedAnimation(Animation):
 
 class ArtistAnimation(TimedAnimation):
     """
-    Animation using a fixed set of `.Artist` objects.
+    `TimedAnimation` subclass that creates an animation by using a fixed
+    set of `.Artist` objects.
 
     Before creating an instance, all plotting should have taken place
     and the relevant artists saved.
@@ -1502,7 +1518,8 @@ class ArtistAnimation(TimedAnimation):
 
 class FuncAnimation(TimedAnimation):
     """
-    Makes an animation by repeatedly calling a function *func*.
+    `TimedAnimation` subclass that makes an animation by repeatedly calling
+    a function *func*.
 
     .. note::
 
@@ -1518,11 +1535,23 @@ class FuncAnimation(TimedAnimation):
     func : callable
         The function to call at each frame.  The first argument will
         be the next value in *frames*.   Any additional positional
-        arguments can be supplied via the *fargs* parameter.
+        arguments can be supplied using `functools.partial` or via the *fargs*
+        parameter.
 
         The required signature is::
 
             def func(frame, *fargs) -> iterable_of_artists
+
+        It is often more convenient to provide the arguments using
+        `functools.partial`. In this way it is also possible to pass keyword
+        arguments. To pass a function with both positional and keyword
+        arguments, set all arguments as keyword arguments, just leaving the
+        *frame* argument unset::
+
+            def func(frame, art, *, y=None):
+                ...
+
+            ani = FuncAnimation(fig, partial(func, art=ln, y='foo'))
 
         If ``blit == True``, *func* must return an iterable of all artists
         that were modified or created. This information is used by the blitting
@@ -1562,7 +1591,8 @@ class FuncAnimation(TimedAnimation):
         value is unused if ``blit == False`` and may be omitted in that case.
 
     fargs : tuple or None, optional
-        Additional arguments to pass to each call to *func*.
+        Additional arguments to pass to each call to *func*. Note: the use of
+        `functools.partial` is preferred over *fargs*. See *func* for details.
 
     save_count : int, default: 100
         Fallback for the number of values from *frames* to cache. This is

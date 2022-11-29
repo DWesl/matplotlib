@@ -263,7 +263,7 @@ fig.get_layout_engine().set(w_pad=4 / 72, h_pad=4 / 72, hspace=0.2,
 
 ##########################################
 # If there are more than two columns, the *wspace* is shared between them,
-# so here the wspace is divided in 2, with a *wspace* of 0.1 between each
+# so here the wspace is divided in two, with a *wspace* of 0.1 between each
 # column:
 
 fig, axs = plt.subplots(2, 3, layout="constrained")
@@ -650,7 +650,7 @@ plot_children(fig)
 fig, ax = plt.subplots(1, 2, layout="constrained")
 example_plot(ax[0], fontsize=32)
 example_plot(ax[1], fontsize=8)
-plot_children(fig, printit=False)
+plot_children(fig)
 
 #######################################################################
 # Two Axes and colorbar
@@ -676,7 +676,7 @@ fig, axs = plt.subplots(2, 2, layout="constrained")
 for ax in axs.flat:
     im = ax.pcolormesh(arr, **pc_kwargs)
 fig.colorbar(im, ax=axs, shrink=0.6)
-plot_children(fig, printit=False)
+plot_children(fig)
 
 #######################################################################
 # Uneven sized Axes
@@ -701,7 +701,7 @@ ax = fig.add_subplot(gs[0, 1])
 im = ax.pcolormesh(arr, **pc_kwargs)
 ax = fig.add_subplot(gs[1, 1])
 im = ax.pcolormesh(arr, **pc_kwargs)
-plot_children(fig, printit=False)
+plot_children(fig)
 
 #######################################################################
 # One case that requires finessing is if margins do not have any artists

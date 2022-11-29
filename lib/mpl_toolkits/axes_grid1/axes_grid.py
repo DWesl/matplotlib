@@ -20,7 +20,6 @@ def _tick_only(ax, bottom_on, left_on):
 class CbarAxesBase:
     def __init__(self, *args, orientation, **kwargs):
         self.orientation = orientation
-        self._default_label_on = True
         self._locator = None  # deprecated.
         super().__init__(*args, **kwargs)
 
@@ -33,7 +32,6 @@ class CbarAxesBase:
         return cb
 
     def toggle_label(self, b):
-        self._default_label_on = b
         axis = self.axis[self.orientation]
         axis.toggle(ticklabels=b, label=b)
 
@@ -43,11 +41,6 @@ class CbarAxesBase:
         self.orientation = orientation
 
 
-@_api.deprecated("3.5")
-class CbarAxes(CbarAxesBase, Axes):
-    pass
-
-
 _cbaraxes_class_factory = cbook._make_class_factory(CbarAxesBase, "Cbar{}")
 
 
@@ -55,7 +48,7 @@ class Grid:
     """
     A grid of Axes.
 
-    In Matplotlib, the axes location (and size) is specified in normalized
+    In Matplotlib, the Axes location (and size) is specified in normalized
     figure coordinates. This may not be ideal for images that needs to be
     displayed with a given aspect ratio; for example, it is difficult to
     display multiple images of a same size with some fixed padding between
@@ -83,9 +76,11 @@ class Grid:
         ----------
         fig : `.Figure`
             The parent figure.
-        rect : (float, float, float, float) or int
-            The axes position, as a ``(left, bottom, width, height)`` tuple or
-            as a three-digit subplot position code (e.g., "121").
+        rect : (float, float, float, float), (int, int, int), int, or \
+    `~.SubplotSpec`
+            The axes position, as a ``(left, bottom, width, height)`` tuple,
+            as a three-digit subplot position code (e.g., ``(1, 2, 1)`` or
+            ``121``), or as a `~.SubplotSpec`.
         nrows_ncols : (int, int)
             Number of rows and columns in the grid.
         ngrids : int or None, default: None
@@ -123,7 +118,8 @@ class Grid:
             ngrids = self._nrows * self._ncols
         else:
             if not 0 < ngrids <= self._nrows * self._ncols:
-                raise Exception("")
+                raise ValueError(
+                    "ngrids must be positive and not larger than nrows*ncols")
 
         self.ngrids = ngrids
 
@@ -140,14 +136,14 @@ class Grid:
             axes_class = functools.partial(cls, **kwargs)
 
         kw = dict(horizontal=[], vertical=[], aspect=aspect)
-        if isinstance(rect, (str, Number, SubplotSpec)):
+        if isinstance(rect, (Number, SubplotSpec)):
             self._divider = SubplotDivider(fig, rect, **kw)
         elif len(rect) == 3:
             self._divider = SubplotDivider(fig, *rect, **kw)
         elif len(rect) == 4:
             self._divider = Divider(fig, rect, **kw)
         else:
-            raise Exception("")
+            raise TypeError("Incorrect rect format")
 
         rect = self._divider.get_position()
 
@@ -306,10 +302,6 @@ class Grid:
     def get_axes_locator(self):
         return self._divider.get_locator()
 
-    @_api.deprecated("3.5")
-    def get_vsize_hsize(self):
-        return self._divider.get_vsize_hsize()
-
 
 class ImageGrid(Grid):
     # docstring inherited
@@ -378,6 +370,10 @@ class ImageGrid(Grid):
             to associated *cbar_axes*.
         axes_class : subclass of `matplotlib.axes.Axes`, default: None
         """
+        _api.check_in_list(["each", "single", "edge", None],
+                           cbar_mode=cbar_mode)
+        _api.check_in_list(["left", "right", "bottom", "top"],
+                           cbar_location=cbar_location)
         self._colorbar_mode = cbar_mode
         self._colorbar_location = cbar_location
         self._colorbar_pad = cbar_pad

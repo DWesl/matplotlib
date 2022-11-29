@@ -190,7 +190,7 @@ class Game:
                                   animated=False)
         self.canvas.mpl_connect('key_press_event', self.on_key_press)
 
-    def draw(self, event):
+    def draw(self):
         draw_artist = self.ax.draw_artist
         if self.background is None:
             self.background = self.canvas.copy_from_bbox(self.ax.bbox)
@@ -220,10 +220,8 @@ class Game:
             for puck in self.pucks:
                 if puck.update(self.pads):
                     # we only get here if someone scored
-                    self.pads[0].disp.set_label(
-                        "   " + str(self.pads[0].score))
-                    self.pads[1].disp.set_label(
-                        "   " + str(self.pads[1].score))
+                    self.pads[0].disp.set_label(f"   {self.pads[0].score}")
+                    self.pads[1].disp.set_label(f"   {self.pads[1].score}")
                     self.ax.legend(loc='center', framealpha=.2,
                                    facecolor='0.5',
                                    prop=FontProperties(size='xx-large',
@@ -231,7 +229,7 @@ class Game:
 
                     self.background = None
                     self.ax.figure.canvas.draw_idle()
-                    return True
+                    return
                 puck.disp.set_offsets([[puck.x, puck.y]])
                 self.ax.draw_artist(puck.disp)
 
@@ -244,7 +242,6 @@ class Game:
             plt.close()
 
         self.cnt += 1
-        return True
 
     def on_key_press(self, event):
         if event.key == '3':
@@ -317,10 +314,7 @@ def on_redraw(event):
 def start_anim(event):
     canvas.mpl_disconnect(start_anim.cid)
 
-    def local_draw():
-        if animation.ax.get_renderer_cache():
-            animation.draw(None)
-    start_anim.timer.add_callback(local_draw)
+    start_anim.timer.add_callback(animation.draw)
     start_anim.timer.start()
     canvas.mpl_connect('draw_event', on_redraw)
 

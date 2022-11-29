@@ -4,7 +4,8 @@ import re
 
 import contourpy
 import numpy as np
-from numpy.testing import assert_array_almost_equal
+from numpy.testing import (
+    assert_array_almost_equal, assert_array_almost_equal_nulp)
 import matplotlib as mpl
 from matplotlib.testing.decorators import image_comparison
 from matplotlib import pyplot as plt, rc_context
@@ -313,7 +314,7 @@ def test_contourf_log_extension():
     cb = plt.colorbar(c1, ax=ax1)
     assert cb.ax.get_ylim() == (1e-8, 1e10)
     cb = plt.colorbar(c2, ax=ax2)
-    assert cb.ax.get_ylim() == (1e-4, 1e6)
+    assert_array_almost_equal_nulp(cb.ax.get_ylim(), np.array((1e-4, 1e6)))
     cb = plt.colorbar(c3, ax=ax3)
 
 
@@ -682,3 +683,13 @@ def test_negative_linestyles(style):
     ax4.clabel(CS4, fontsize=9, inline=True)
     ax4.set_title(f'Single color - negative contours {style}')
     assert CS4.negative_linestyles == style
+
+
+def test_contour_remove():
+    ax = plt.figure().add_subplot()
+    orig_children = ax.get_children()
+    cs = ax.contour(np.arange(16).reshape((4, 4)))
+    cs.clabel()
+    assert ax.get_children() != orig_children
+    cs.remove()
+    assert ax.get_children() == orig_children

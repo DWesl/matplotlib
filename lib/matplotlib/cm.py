@@ -27,13 +27,6 @@ from matplotlib._cm import datad
 from matplotlib._cm_listed import cmaps as cmaps_listed
 
 
-@_api.caching_module_getattr  # module-level deprecations
-class __getattr__:
-    LUTSIZE = _api.deprecated(
-        "3.5", obj_type="", alternative="rcParams['image.lut']")(
-            property(lambda self: _LUTSIZE))
-
-
 _LUTSIZE = mpl.rcParams['image.lut']
 
 
@@ -60,12 +53,6 @@ def _gen_cmap_registry():
 class ColormapRegistry(Mapping):
     r"""
     Container for colormaps that are known to Matplotlib by name.
-
-    .. admonition:: Experimental
-
-       While we expect the API to be final, we formally mark it as
-       experimental for 3.5 because we want to keep the option to still adapt
-       the API for 3.6 should the need arise.
 
     The universal registry instance is `matplotlib.colormaps`. There should be
     no need for users to instantiate `.ColormapRegistry` themselves.
@@ -193,6 +180,38 @@ class ColormapRegistry(Mapping):
                              "colormap.")
         self._cmaps.pop(name, None)
 
+    def get_cmap(self, cmap):
+        """
+        Return a color map specified through *cmap*.
+
+        Parameters
+        ----------
+        cmap : str or `~matplotlib.colors.Colormap` or None
+
+            - if a `.Colormap`, return it
+            - if a string, look it up in ``mpl.colormaps``
+            - if None, return the Colormap defined in :rc:`image.cmap`
+
+        Returns
+        -------
+        Colormap
+        """
+        # get the default color map
+        if cmap is None:
+            return self[mpl.rcParams["image.cmap"]]
+
+        # if the user passed in a Colormap, simply return it
+        if isinstance(cmap, colors.Colormap):
+            return cmap
+        if isinstance(cmap, str):
+            _api.check_in_list(sorted(_colormaps), cmap=cmap)
+            # otherwise, it must be a string so look it up
+            return self[cmap]
+        raise TypeError(
+            'get_cmap expects None or an instance of a str or Colormap . ' +
+            f'you passed {cmap!r} of type {type(cmap)}'
+        )
+
 
 # public access to the colormaps should be via `matplotlib.colormaps`. For now,
 # we still create the registry here, but that should stay an implementation
@@ -201,6 +220,11 @@ _colormaps = ColormapRegistry(_gen_cmap_registry())
 globals().update(_colormaps)
 
 
+@_api.deprecated(
+    '3.6',
+    pending=True,
+    alternative="``matplotlib.colormaps.register(name)``"
+)
 def register_cmap(name=None, cmap=None, *, override_builtin=False):
     """
     Add a colormap to the set recognized by :func:`get_cmap`.
@@ -244,12 +268,9 @@ def register_cmap(name=None, cmap=None, *, override_builtin=False):
     _colormaps._allow_override_builtin = False
 
 
-def get_cmap(name=None, lut=None):
+def _get_cmap(name=None, lut=None):
     """
     Get a colormap instance, defaulting to rc values if *name* is None.
-
-    Colormaps added with :func:`register_cmap` take precedence over
-    built-in colormaps.
 
     Parameters
     ----------
@@ -260,6 +281,10 @@ def get_cmap(name=None, lut=None):
     lut : int or None, default: None
         If *name* is not already a Colormap instance and *lut* is not None, the
         colormap will be resampled to have *lut* entries in the lookup table.
+
+    Returns
+    -------
+    Colormap
     """
     if name is None:
         name = mpl.rcParams['image.cmap']
@@ -269,9 +294,26 @@ def get_cmap(name=None, lut=None):
     if lut is None:
         return _colormaps[name]
     else:
-        return _colormaps[name]._resample(lut)
+        return _colormaps[name].resampled(lut)
+
+# do it in two steps like this so we can have an un-deprecated version in
+# pyplot.
+get_cmap = _api.deprecated(
+    '3.6',
+    name='get_cmap',
+    pending=True,
+    alternative=(
+        "``matplotlib.colormaps[name]`` " +
+        "or ``matplotlib.colormaps.get_cmap(obj)``"
+    )
+)(_get_cmap)
 
 
+@_api.deprecated(
+    '3.6',
+    pending=True,
+    alternative="``matplotlib.colormaps.unregister(name)``"
+)
 def unregister_cmap(name):
     """
     Remove a colormap recognized by :func:`get_cmap`.
@@ -367,9 +409,6 @@ class ScalarMappable:
         #: The last colorbar associated with this ScalarMappable. May be None.
         self.colorbar = None
         self.callbacks = cbook.CallbackRegistry(signals=["changed"])
-
-    callbacksSM = _api.deprecated("3.5", alternative="callbacks")(
-        property(lambda self: self.callbacks))
 
     def _scale_norm(self, norm, vmin, vmax):
         """
@@ -550,8 +589,8 @@ class ScalarMappable:
         cmap : `.Colormap` or str or None
         """
         in_init = self.cmap is None
-        cmap = get_cmap(cmap)
-        self.cmap = cmap
+
+        self.cmap = _ensure_cmap(cmap)
         if not in_init:
             self.changed()  # Things are not set up properly yet.
 
@@ -663,3 +702,31 @@ vmin, vmax : float, optional
     *vmin*/*vmax* when a *norm* instance is given (but using a `str` *norm*
     name together with *vmin*/*vmax* is acceptable).""",
 )
+
+
+def _ensure_cmap(cmap):
+    """
+    Ensure that we have a `.Colormap` object.
+
+    For internal use to preserve type stability of errors.
+
+    Parameters
+    ----------
+    cmap : None, str, Colormap
+
+        - if a `Colormap`, return it
+        - if a string, look it up in mpl.colormaps
+        - if None, look up the default color map in mpl.colormaps
+
+    Returns
+    -------
+    Colormap
+
+    """
+    if isinstance(cmap, colors.Colormap):
+        return cmap
+    cmap_name = cmap if cmap is not None else mpl.rcParams["image.cmap"]
+    # use check_in_list to ensure type stability of the exception raised by
+    # the internal usage of this (ValueError vs KeyError)
+    _api.check_in_list(sorted(_colormaps), cmap=cmap_name)
+    return mpl.colormaps[cmap_name]

@@ -1,7 +1,7 @@
 """
-================
-Pick Event Demo2
-================
+=================
+Pick event demo 2
+=================
 
 Compute the mean (mu) and standard deviation (sigma) of 100 data sets and plot
 mu vs. sigma.  When you click on one of the (mu, sigma) points, plot the raw
@@ -34,11 +34,11 @@ line, = ax.plot(xs, ys, 'o', picker=True, pickradius=5)
 def onpick(event):
 
     if event.artist != line:
-        return True
+        return
 
     N = len(event.ind)
     if not N:
-        return True
+        return
 
     figi, axs = plt.subplots(N, squeeze=False)
     for ax, dataind in zip(axs.flat, event.ind):
@@ -47,7 +47,7 @@ def onpick(event):
                 transform=ax.transAxes, va='top')
         ax.set_ylim(-0.5, 1.5)
     figi.show()
-    return True
+
 
 fig.canvas.mpl_connect('pick_event', onpick)
 

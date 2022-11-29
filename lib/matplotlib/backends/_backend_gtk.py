@@ -9,7 +9,8 @@ import matplotlib as mpl
 from matplotlib import _api, backend_tools, cbook
 from matplotlib._pylab_helpers import Gcf
 from matplotlib.backend_bases import (
-    _Backend, FigureManagerBase, NavigationToolbar2, TimerBase)
+    _Backend, FigureCanvasBase, FigureManagerBase, NavigationToolbar2,
+    TimerBase)
 from matplotlib.backend_tools import Cursors
 
 import gi
@@ -24,12 +25,7 @@ except ImportError as e:
     raise ImportError("Gtk-based backends require cairo") from e
 
 _log = logging.getLogger(__name__)
-
-backend_version = "%s.%s.%s" % (
-    Gtk.get_major_version(), Gtk.get_minor_version(), Gtk.get_micro_version())
-
-# Placeholder
-_application = None
+_application = None  # Placeholder
 
 
 def _shutdown_application(app):
@@ -118,6 +114,10 @@ class TimerGTK(TimerBase):
             return False
 
 
+class _FigureCanvasGTK(FigureCanvasBase):
+    _timer_cls = TimerGTK
+
+
 class _FigureManagerGTK(FigureManagerBase):
     """
     Attributes
@@ -197,6 +197,25 @@ class _FigureManagerGTK(FigureManagerBase):
         self.window.destroy()
         self.canvas.destroy()
 
+    @classmethod
+    def start_main_loop(cls):
+        global _application
+        if _application is None:
+            return
+
+        try:
+            _application.run()  # Quits when all added windows close.
+        except KeyboardInterrupt:
+            # Ensure all windows can process their close event from
+            # _shutdown_application.
+            context = GLib.MainContext.default()
+            while context.pending():
+                context.iteration(True)
+            raise
+        finally:
+            # Running after quit is undefined, so create a new one next time.
+            _application = None
+
     def show(self):
         # show the figure window
         self.window.show()
@@ -233,8 +252,8 @@ class _FigureManagerGTK(FigureManagerBase):
         width = int(width / self.canvas.device_pixel_ratio)
         height = int(height / self.canvas.device_pixel_ratio)
         if self.toolbar:
-            toolbar_size = self.toolbar.size_request()
-            height += toolbar_size.height
+            min_size, nat_size = self.toolbar.get_preferred_size()
+            height += nat_size.height
         canvas_size = self.canvas.get_allocation()
         if self._gtk_ver >= 4 or canvas_size.width == canvas_size.height == 1:
             # A canvas size of (1, 1) cannot exist in most cases, because
@@ -305,21 +324,9 @@ class ConfigureSubplotsGTK(backend_tools.ConfigureSubplotsBase):
 
 
 class _BackendGTK(_Backend):
-    @staticmethod
-    def mainloop():
-        global _application
-        if _application is None:
-            return
-
-        try:
-            _application.run()  # Quits when all added windows close.
-        except KeyboardInterrupt:
-            # Ensure all windows can process their close event from
-            # _shutdown_application.
-            context = GLib.MainContext.default()
-            while context.pending():
-                context.iteration(True)
-            raise
-        finally:
-            # Running after quit is undefined, so create a new one next time.
-            _application = None
+    backend_version = "%s.%s.%s" % (
+        Gtk.get_major_version(),
+        Gtk.get_minor_version(),
+        Gtk.get_micro_version(),
+    )
+    mainloop = _FigureManagerGTK.start_main_loop

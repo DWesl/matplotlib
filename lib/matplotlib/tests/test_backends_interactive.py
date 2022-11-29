@@ -59,9 +59,6 @@ def _get_testable_interactive_backends():
         elif env["MPLBACKEND"].startswith('wx') and sys.platform == 'darwin':
             # ignore on OSX because that's currently broken (github #16849)
             marks.append(pytest.mark.xfail(reason='github #16849'))
-        elif env["MPLBACKEND"] == "tkagg" and sys.platform == 'darwin':
-            marks.append(  # GitHub issue #23094
-                pytest.mark.xfail(reason="Tk version mismatch on OSX CI"))
         envs.append(
             pytest.param(
                 {**env, 'BACKEND_DEPS': ','.join(deps)},
@@ -77,12 +74,9 @@ _test_timeout = 60  # A reasonably safe value for slower architectures.
 # The source of this function gets extracted and run in another process, so it
 # must be fully self-contained.
 # Using a timer not only allows testing of timers (on other backends), but is
-# also necessary on gtk3 and wx, where a direct call to key_press_event("q")
-# from draw_event causes breakage due to the canvas widget being deleted too
-# early.  Also, gtk3 redefines key_press_event with a different signature, so
-# we directly invoke it from the superclass instead.
+# also necessary on gtk3 and wx, where directly processing a KeyEvent() for "q"
+# from draw_event causes breakage as the canvas widget gets deleted too early.
 def _test_interactive_impl():
-    import importlib
     import importlib.util
     import io
     import json
@@ -90,14 +84,14 @@ def _test_interactive_impl():
     from unittest import TestCase
 
     import matplotlib as mpl
-    from matplotlib import pyplot as plt, rcParams
+    from matplotlib import pyplot as plt
     from matplotlib.backend_bases import KeyEvent
-    rcParams.update({
+    mpl.rcParams.update({
         "webagg.open_in_browser": False,
         "webagg.port_retries": 1,
     })
 
-    rcParams.update(json.loads(sys.argv[1]))
+    mpl.rcParams.update(json.loads(sys.argv[1]))
     backend = plt.rcParams["backend"].lower()
     assert_equal = TestCase().assertEqual
     assert_raises = TestCase().assertRaises
@@ -172,6 +166,8 @@ def test_interactive_backend(env, toolbar):
     if env["MPLBACKEND"] == "macosx":
         if toolbar == "toolmanager":
             pytest.skip("toolmanager is not implemented for macosx.")
+    if env["MPLBACKEND"] == "wx":
+        pytest.skip("wx backend is deprecated; tests failed on appveyor")
     proc = _run_helper(_test_interactive_impl,
                        json.dumps({"toolbar": toolbar}),
                        timeout=_test_timeout,
@@ -183,9 +179,10 @@ def test_interactive_backend(env, toolbar):
 def _test_thread_impl():
     from concurrent.futures import ThreadPoolExecutor
 
-    from matplotlib import pyplot as plt, rcParams
+    import matplotlib as mpl
+    from matplotlib import pyplot as plt
 
-    rcParams.update({
+    mpl.rcParams.update({
         "webagg.open_in_browser": False,
         "webagg.port_retries": 1,
     })
@@ -239,9 +236,6 @@ for param in _thread_safe_backends:
                 reason='PyPy does not support Tkinter threading: '
                        'https://foss.heptapod.net/pypy/pypy/-/issues/1929',
                 strict=True))
-    elif backend == "tkagg" and sys.platform == "darwin":
-        param.marks.append(  # GitHub issue #23094
-            pytest.mark.xfail("Tk version mismatch on OSX CI"))
 
 
 @pytest.mark.parametrize("env", _thread_safe_backends)
@@ -519,10 +513,6 @@ for param in _blit_backends:
     elif backend == "wx":
         param.marks.append(
             pytest.mark.skip("wx does not support blitting"))
-    elif backend == "tkagg" and sys.platform == "darwin":
-        param.marks.append(  # GitHub issue #23094
-            pytest.mark.xfail("Tk version mismatch on OSX CI")
-        )
 
 
 @pytest.mark.parametrize("env", _blit_backends)
@@ -572,6 +562,8 @@ def _test_figure_leak():
 
 
 # TODO: "0.1" memory threshold could be reduced 10x by fixing tkagg
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="appveyor tests fail; gh-22988 suggests reworking")
 @pytest.mark.parametrize("env", _get_testable_interactive_backends())
 @pytest.mark.parametrize("time_mem", [(0.0, 2_000_000), (0.1, 30_000_000)])
 def test_figure_leak_20490(env, time_mem):
@@ -580,6 +572,9 @@ def test_figure_leak_20490(env, time_mem):
     # We haven't yet directly identified the leaks so test with a memory growth
     # threshold.
     pause_time, acceptable_memory_leakage = time_mem
+    if env["MPLBACKEND"] == "wx":
+        pytest.skip("wx backend is deprecated; tests failed on appveyor")
+
     if env["MPLBACKEND"] == "macosx" or (
             env["MPLBACKEND"] == "tkagg" and sys.platform == 'darwin'
     ):

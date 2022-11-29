@@ -22,13 +22,25 @@ import sys
 import time
 import traceback
 import types
-import warnings
 import weakref
 
 import numpy as np
 
 import matplotlib
 from matplotlib import _api, _c_internal_utils
+
+
+@_api.caching_module_getattr
+class __getattr__:
+    # module-level deprecations
+    MatplotlibDeprecationWarning = _api.deprecated(
+        "3.6", obj_type="",
+        alternative="matplotlib.MatplotlibDeprecationWarning")(
+        property(lambda self: _api.deprecation.MatplotlibDeprecationWarning))
+    mplDeprecation = _api.deprecated(
+        "3.6", obj_type="",
+        alternative="matplotlib.MatplotlibDeprecationWarning")(
+        property(lambda self: _api.deprecation.MatplotlibDeprecationWarning))
 
 
 def _get_running_interactive_framework():
@@ -120,9 +132,9 @@ class CallbackRegistry:
     for a set of signals and callbacks:
 
         >>> def oneat(x):
-        ...    print('eat', x)
+        ...     print('eat', x)
         >>> def ondrink(x):
-        ...    print('drink', x)
+        ...     print('drink', x)
 
         >>> from matplotlib.cbook import CallbackRegistry
         >>> callbacks = CallbackRegistry()
@@ -208,9 +220,6 @@ class CallbackRegistry:
 
     def connect(self, signal, func):
         """Register *func* to be called when signal *signal* is generated."""
-        if signal == "units finalize":
-            _api.warn_deprecated(
-                "3.5", name=signal, obj_type="signal", alternative="units")
         if self._signals is not None:
             _api.check_in_list(self._signals, signal=signal)
         self._func_cid_map.setdefault(signal, {})
@@ -696,37 +705,6 @@ class Stack:
                 self.push(elem)
 
 
-@_api.deprecated("3.5", alternative="psutil.virtual_memory")
-def report_memory(i=0):  # argument may go away
-    """Return the memory consumed by the process."""
-    def call(command, os_name):
-        try:
-            return subprocess.check_output(command)
-        except subprocess.CalledProcessError as err:
-            raise NotImplementedError(
-                "report_memory works on %s only if "
-                "the '%s' program is found" % (os_name, command[0])
-            ) from err
-
-    pid = os.getpid()
-    if sys.platform == 'sunos5':
-        lines = call(['ps', '-p', '%d' % pid, '-o', 'osz'], 'Sun OS')
-        mem = int(lines[-1].strip())
-    elif sys.platform == 'linux':
-        lines = call(['ps', '-p', '%d' % pid, '-o', 'rss,sz'], 'Linux')
-        mem = int(lines[1].split()[1])
-    elif sys.platform == 'darwin':
-        lines = call(['ps', '-p', '%d' % pid, '-o', 'rss,vsz'], 'Mac OS')
-        mem = int(lines[1].split()[0])
-    elif sys.platform == 'win32':
-        lines = call(["tasklist", "/nh", "/fi", "pid eq %d" % pid], 'Windows')
-        mem = int(lines.strip().split()[-2].replace(',', ''))
-    else:
-        raise NotImplementedError(
-            "We don't have a memory monitor for %s" % sys.platform)
-    return mem
-
-
 def safe_masked_invalid(x, copy=False):
     x = np.array(x, subok=True, copy=copy)
     if not x.dtype.isnative:
@@ -1158,6 +1136,7 @@ def boxplot_stats(X, whis=1.5, bootstrap=None, labels=None,
         med        50th percentile
         q1         first quartile (25th percentile)
         q3         third quartile (75th percentile)
+        iqr        interquartile range
         cilo       lower notch around the median
         cihi       upper notch around the median
         whislo     end of the lower whisker
@@ -1239,11 +1218,11 @@ def boxplot_stats(X, whis=1.5, bootstrap=None, labels=None,
             stats['med'] = np.nan
             stats['q1'] = np.nan
             stats['q3'] = np.nan
+            stats['iqr'] = np.nan
             stats['cilo'] = np.nan
             stats['cihi'] = np.nan
             stats['whislo'] = np.nan
             stats['whishi'] = np.nan
-            stats['med'] = np.nan
             continue
 
         # up-convert to an array, just to be safe
@@ -1496,7 +1475,7 @@ def violin_stats(X, method, points=100, quantiles=None):
     else:
         quantiles = [[]] * len(X)
 
-    # quantiles should has the same size as dataset
+    # quantiles should have the same size as dataset
     if len(X) != len(quantiles):
         raise ValueError("List of violinplot statistics and quantiles values"
                          " must have the same length")
@@ -1687,22 +1666,53 @@ def safe_first_element(obj):
     """
     Return the first element in *obj*.
 
-    This is an type-independent way of obtaining the first element, supporting
-    both index access and the iterator protocol.
+    This is a type-independent way of obtaining the first element,
+    supporting both index access and the iterator protocol.
     """
-    if isinstance(obj, collections.abc.Iterator):
-        # needed to accept `array.flat` as input.
-        # np.flatiter reports as an instance of collections.Iterator
-        # but can still be indexed via [].
-        # This has the side effect of re-setting the iterator, but
-        # that is acceptable.
+    return _safe_first_finite(obj, skip_nonfinite=False)
+
+
+def _safe_first_finite(obj, *, skip_nonfinite=True):
+    """
+    Return the first non-None (and optionally finite) element in *obj*.
+
+    This is a method for internal use.
+
+    This is a type-independent way of obtaining the first non-None element,
+    supporting both index access and the iterator protocol.
+    The first non-None element will be obtained when skip_none is True.
+    """
+    def safe_isfinite(val):
+        if val is None:
+            return False
         try:
-            return obj[0]
+            return np.isfinite(val) if np.isscalar(val) else True
         except TypeError:
-            pass
-        raise RuntimeError("matplotlib does not support generators "
-                           "as input")
-    return next(iter(obj))
+            # This is something that numpy can not make heads or tails
+            # of, assume "finite"
+            return True
+    if skip_nonfinite is False:
+        if isinstance(obj, collections.abc.Iterator):
+            # needed to accept `array.flat` as input.
+            # np.flatiter reports as an instance of collections.Iterator
+            # but can still be indexed via [].
+            # This has the side effect of re-setting the iterator, but
+            # that is acceptable.
+            try:
+                return obj[0]
+            except TypeError:
+                pass
+            raise RuntimeError("matplotlib does not support generators "
+                               "as input")
+        return next(iter(obj))
+    elif isinstance(obj, np.flatiter):
+        # TODO do the finite filtering on this
+        return obj[0]
+    elif isinstance(obj, collections.abc.Iterator):
+        raise RuntimeError("matplotlib does not "
+                           "support generators as input")
+    else:
+        return next(val for val in obj if safe_isfinite(val))
 
 
 def sanitize_sequence(data):
@@ -1861,7 +1871,7 @@ def _array_perimeter(arr):
 
     Examples
     --------
-    >>> i, j = np.ogrid[:3,:4]
+    >>> i, j = np.ogrid[:3, :4]
     >>> a = i*10 + j
     >>> a
     array([[ 0,  1,  2,  3],
@@ -1905,7 +1915,7 @@ def _unfold(arr, axis, size, step):
 
     Examples
     --------
-    >>> i, j = np.ogrid[:3,:7]
+    >>> i, j = np.ogrid[:3, :7]
     >>> a = i*10 + j
     >>> a
     array([[ 0,  1,  2,  3,  4,  5,  6],
@@ -2292,3 +2302,30 @@ def _unpack_to_numpy(x):
         if isinstance(xtmp, np.ndarray):
             return xtmp
     return x
+
+
+def _auto_format_str(fmt, value):
+    """
+    Apply *value* to the format string *fmt*.
+
+    This works both with unnamed %-style formatting and
+    unnamed {}-style formatting. %-style formatting has priority.
+    If *fmt* is %-style formattable that will be used. Otherwise,
+    {}-formatting is applied. Strings without formatting placeholders
+    are passed through as is.
+
+    Examples
+    --------
+    >>> _auto_format_str('%.2f m', 0.2)
+    '0.20 m'
+    >>> _auto_format_str('{} m', 0.2)
+    '0.2 m'
+    >>> _auto_format_str('const', 0.2)
+    'const'
+    >>> _auto_format_str('%d or {}', 0.2)
+    '0 or {}'
+    """
+    try:
+        return fmt % (value,)
+    except (TypeError, ValueError):
+        return fmt.format(value)

@@ -100,6 +100,7 @@ Ticks, tick labels and Offset text
    Axis.get_offset_text
 
    Axis.get_tick_padding
+   Axis.get_tick_params
    Axis.get_ticklabels
    Axis.get_ticklines
    Axis.get_ticklocs
@@ -150,6 +151,7 @@ Interactive
    :nosignatures:
 
    Axis.contains
+   Axis.pickradius
    Axis.get_pickradius
    Axis.set_pickradius
 

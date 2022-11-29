@@ -33,10 +33,12 @@ import matplotlib.cbook as cbook
 import matplotlib.colorbar as cbar
 import matplotlib.image as mimage
 
-from matplotlib.axes import Axes, SubplotBase, subplot_class_factory
+from matplotlib.axes import Axes
 from matplotlib.gridspec import GridSpec
-from matplotlib.layout_engine import (ConstrainedLayoutEngine,
-                                      TightLayoutEngine, LayoutEngine)
+from matplotlib.layout_engine import (
+    ConstrainedLayoutEngine, TightLayoutEngine, LayoutEngine,
+    PlaceHolderLayoutEngine
+)
 import matplotlib.legend as mlegend
 from matplotlib.patches import Rectangle
 from matplotlib.text import Text
@@ -119,26 +121,21 @@ class SubplotParams:
             The height of the padding between subplots,
             as a fraction of the average Axes height.
         """
-        self._validate = True
         for key in ["left", "bottom", "right", "top", "wspace", "hspace"]:
             setattr(self, key, mpl.rcParams[f"figure.subplot.{key}"])
         self.update(left, bottom, right, top, wspace, hspace)
-
-    # Also remove _validate after deprecation elapses.
-    validate = _api.deprecate_privatize_attribute("3.5")
 
     def update(self, left=None, bottom=None, right=None, top=None,
                wspace=None, hspace=None):
         """
         Update the dimensions of the passed parameters. *None* means unchanged.
         """
-        if self._validate:
-            if ((left if left is not None else self.left)
-                    >= (right if right is not None else self.right)):
-                raise ValueError('left cannot be >= right')
-            if ((bottom if bottom is not None else self.bottom)
-                    >= (top if top is not None else self.top)):
-                raise ValueError('bottom cannot be >= top')
+        if ((left if left is not None else self.left)
+                >= (right if right is not None else self.right)):
+            raise ValueError('left cannot be >= right')
+        if ((bottom if bottom is not None else self.bottom)
+                >= (top if top is not None else self.top)):
+            raise ValueError('bottom cannot be >= top')
         if left is not None:
             self.left = left
         if right is not None:
@@ -176,8 +173,6 @@ class FigureBase(Artist):
         self._align_label_groups = {"x": cbook.Grouper(), "y": cbook.Grouper()}
 
         self.figure = self
-        # list of child gridspecs for this figure
-        self._gridspecs = []
         self._localaxes = []  # track all axes
         self.artists = []
         self.lines = []
@@ -206,20 +201,13 @@ class FigureBase(Artist):
             key=lambda artist: artist.get_zorder())
         for ax in self._localaxes:
             locator = ax.get_axes_locator()
-            if locator:
-                pos = locator(ax, renderer)
-                ax.apply_aspect(pos)
-            else:
-                ax.apply_aspect()
+            ax.apply_aspect(locator(ax, renderer) if locator else None)
 
             for child in ax.get_children():
                 if hasattr(child, 'apply_aspect'):
                     locator = child.get_axes_locator()
-                    if locator:
-                        pos = locator(child, renderer)
-                        child.apply_aspect(pos)
-                    else:
-                        child.apply_aspect()
+                    child.apply_aspect(
+                        locator(child, renderer) if locator else None)
         return artists
 
     def autofmt_xdate(
@@ -244,7 +232,7 @@ class FigureBase(Artist):
             Selects which ticklabels to rotate.
         """
         _api.check_in_list(['major', 'minor', 'both'], which=which)
-        allsubplots = all(hasattr(ax, 'get_subplotspec') for ax in self.axes)
+        allsubplots = all(ax.get_subplotspec() for ax in self.axes)
         if len(self.axes) == 1:
             for label in self.axes[0].get_xticklabels(which=which):
                 label.set_ha(ha)
@@ -314,10 +302,10 @@ class FigureBase(Artist):
         verticalalignment, va : {'top', 'center', 'bottom', 'baseline'}, \
 default: %(va)s
             The vertical alignment of the text relative to (*x*, *y*).
-        fontsize, size : default: :rc:`figure.titlesize`
+        fontsize, size : default: :rc:`figure.%(rc)ssize`
             The font size of the text. See `.Text.set_size` for possible
             values.
-        fontweight, weight : default: :rc:`figure.titleweight`
+        fontweight, weight : default: :rc:`figure.%(rc)sweight`
             The font weight of the text. See `.Text.set_weight` for possible
             values.
 
@@ -331,8 +319,8 @@ default: %(va)s
         fontproperties : None or dict, optional
             A dict of font properties. If *fontproperties* is given the
             default values for font size and weight are taken from the
-            `.FontProperties` defaults. :rc:`figure.titlesize` and
-            :rc:`figure.titleweight` are ignored in this case.
+            `.FontProperties` defaults. :rc:`figure.%(rc)ssize` and
+            :rc:`figure.%(rc)sweight` are ignored in this case.
 
         **kwargs
             Additional kwargs are `matplotlib.text.Text` properties.
@@ -360,9 +348,9 @@ default: %(va)s
 
         if 'fontproperties' not in kwargs:
             if 'fontsize' not in kwargs and 'size' not in kwargs:
-                kwargs['size'] = mpl.rcParams['figure.titlesize']
+                kwargs['size'] = mpl.rcParams[info['size']]
             if 'fontweight' not in kwargs and 'weight' not in kwargs:
-                kwargs['weight'] = mpl.rcParams['figure.titleweight']
+                kwargs['weight'] = mpl.rcParams[info['weight']]
 
         sup = self.text(x, y, t, **kwargs)
         if suplab is not None:
@@ -378,31 +366,34 @@ default: %(va)s
         return suplab
 
     @_docstring.Substitution(x0=0.5, y0=0.98, name='suptitle', ha='center',
-                             va='top')
+                             va='top', rc='title')
     @_docstring.copy(_suplabels)
     def suptitle(self, t, **kwargs):
         # docstring from _suplabels...
         info = {'name': '_suptitle', 'x0': 0.5, 'y0': 0.98,
-                'ha': 'center', 'va': 'top', 'rotation': 0}
+                'ha': 'center', 'va': 'top', 'rotation': 0,
+                'size': 'figure.titlesize', 'weight': 'figure.titleweight'}
         return self._suplabels(t, info, **kwargs)
 
     @_docstring.Substitution(x0=0.5, y0=0.01, name='supxlabel', ha='center',
-                             va='bottom')
+                             va='bottom', rc='label')
     @_docstring.copy(_suplabels)
     def supxlabel(self, t, **kwargs):
         # docstring from _suplabels...
         info = {'name': '_supxlabel', 'x0': 0.5, 'y0': 0.01,
-                'ha': 'center', 'va': 'bottom', 'rotation': 0}
+                'ha': 'center', 'va': 'bottom', 'rotation': 0,
+                'size': 'figure.labelsize', 'weight': 'figure.labelweight'}
         return self._suplabels(t, info, **kwargs)
 
     @_docstring.Substitution(x0=0.02, y0=0.5, name='supylabel', ha='left',
-                             va='center')
+                             va='center', rc='label')
     @_docstring.copy(_suplabels)
     def supylabel(self, t, **kwargs):
         # docstring from _suplabels...
         info = {'name': '_supylabel', 'x0': 0.02, 'y0': 0.5,
                 'ha': 'left', 'va': 'center', 'rotation': 'vertical',
-                'rotation_mode': 'anchor'}
+                'rotation_mode': 'anchor', 'size': 'figure.labelsize',
+                'weight': 'figure.labelweight'}
         return self._suplabels(t, info, **kwargs)
 
     def get_edgecolor(self):
@@ -476,9 +467,9 @@ default: %(va)s
         """
         Add an `.Artist` to the figure.
 
-        Usually artists are added to Axes objects using `.Axes.add_artist`;
-        this method can be used in the rare cases where one needs to add
-        artists directly to the figure instead.
+        Usually artists are added to `~.axes.Axes` objects using
+        `.Axes.add_artist`; this method can be used in the rare cases where
+        one needs to add artists directly to the figure instead.
 
         Parameters
         ----------
@@ -510,7 +501,7 @@ default: %(va)s
     @_docstring.dedent_interpd
     def add_axes(self, *args, **kwargs):
         """
-        Add an Axes to the figure.
+        Add an `~.axes.Axes` to the figure.
 
         Call signatures::
 
@@ -520,8 +511,9 @@ default: %(va)s
         Parameters
         ----------
         rect : tuple (left, bottom, width, height)
-            The dimensions (left, bottom, width, height) of the new Axes. All
-            quantities are in fractions of figure width and height.
+            The dimensions (left, bottom, width, height) of the new
+            `~.axes.Axes`. All quantities are in fractions of figure width and
+            height.
 
         projection : {None, 'aitoff', 'hammer', 'lambert', 'mollweide', \
 'polar', 'rectilinear', str}, optional
@@ -679,13 +671,11 @@ default: %(va)s
 
         Returns
         -------
-        `.axes.SubplotBase`, or another subclass of `~.axes.Axes`
+        `~.axes.Axes`
 
-            The Axes of the subplot. The returned Axes base class depends on
-            the projection used. It is `~.axes.Axes` if rectilinear projection
-            is used and `.projections.polar.PolarAxes` if polar projection
-            is used. The returned Axes is then a subplot subclass of the
-            base class.
+            The Axes of the subplot. The returned Axes can actually be an
+            instance of a subclass, such as `.projections.polar.PolarAxes` for
+            polar projections.
 
         Other Parameters
         ----------------
@@ -729,11 +719,13 @@ default: %(va)s
             raise TypeError(
                 "add_subplot() got an unexpected keyword argument 'figure'")
 
-        if len(args) == 1 and isinstance(args[0], SubplotBase):
+        if (len(args) == 1
+                and isinstance(args[0], mpl.axes._base._AxesBase)
+                and args[0].get_subplotspec()):
             ax = args[0]
             key = ax._projection_init
             if ax.get_figure() is not self:
-                raise ValueError("The Subplot must have been created in "
+                raise ValueError("The Axes must have been created in "
                                  "the present figure")
         else:
             if not args:
@@ -746,7 +738,7 @@ default: %(va)s
                 args = tuple(map(int, str(args[0])))
             projection_class, pkw = self._process_projection_requirements(
                 *args, **kwargs)
-            ax = subplot_class_factory(projection_class)(self, *args, **pkw)
+            ax = projection_class(self, *args, **pkw)
             key = (projection_class, pkw)
         return self._add_axes_internal(ax, key)
 
@@ -870,20 +862,19 @@ default: %(va)s
             axes[0, 0].plot(x, y)
             axes[1, 1].scatter(x, y)
 
-            # Share a X axis with each column of subplots
+            # Share an X-axis with each column of subplots
             fig.subplots(2, 2, sharex='col')
 
-            # Share a Y axis with each row of subplots
+            # Share a Y-axis with each row of subplots
             fig.subplots(2, 2, sharey='row')
 
-            # Share both X and Y axes with all subplots
+            # Share both X- and Y-axes with all subplots
             fig.subplots(2, 2, sharex='all', sharey='all')
 
             # Note that this is the same as
             fig.subplots(2, 2, sharex=True, sharey=True)
         """
-        if gridspec_kw is None:
-            gridspec_kw = {}
+        gridspec_kw = dict(gridspec_kw or {})
         if height_ratios is not None:
             if 'height_ratios' in gridspec_kw:
                 raise ValueError("'height_ratios' must not be defined both as "
@@ -975,7 +966,7 @@ default: %(va)s
     # synonym for `clear`.
     def clf(self, keep_observers=False):
         """
-        Alias for the `clear()` method.
+        [*Discouraged*] Alias for the `clear()` method.
 
         .. admonition:: Discouraged
 
@@ -989,9 +980,12 @@ default: %(va)s
         """
         return self.clear(keep_observers=keep_observers)
 
-    # Note: in the docstring below, the newlines in the examples after the
-    # calls to legend() allow replacing it with figlegend() to generate the
-    # docstring of pyplot.figlegend.
+    # Note: the docstring below is modified with replace for the pyplot
+    # version of this function because the method name differs (plt.figlegend)
+    # the replacements are:
+    #    " legend(" -> " figlegend(" for the signatures
+    #    "fig.legend(" -> "plt.figlegend" for the code examples
+    #    "ax.plot" -> "plt.plot" for consistency in using pyplot when able
     @_docstring.dedent_interpd
     def legend(self, *args, **kwargs):
         """
@@ -1180,18 +1174,94 @@ default: %(va)s
     @_docstring.dedent_interpd
     def colorbar(
             self, mappable, cax=None, ax=None, use_gridspec=True, **kwargs):
-        """%(colorbar_doc)s"""
+        """
+        Add a colorbar to a plot.
+
+        Parameters
+        ----------
+        mappable
+            The `matplotlib.cm.ScalarMappable` (i.e., `.AxesImage`,
+            `.ContourSet`, etc.) described by this colorbar.  This argument is
+            mandatory for the `.Figure.colorbar` method but optional for the
+            `.pyplot.colorbar` function, which sets the default to the current
+            image.
+
+            Note that one can create a `.ScalarMappable` "on-the-fly" to
+            generate colorbars not attached to a previously drawn artist, e.g.
+            ::
+
+                fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax)
+
+        cax : `~matplotlib.axes.Axes`, optional
+            Axes into which the colorbar will be drawn.
+
+        ax : `~.axes.Axes` or list or `numpy.ndarray` of Axes, optional
+            One or more parent axes from which space for a new colorbar axes
+            will be stolen, if *cax* is None.  This has no effect if *cax* is
+            set.
+
+        use_gridspec : bool, optional
+            If *cax* is ``None``, a new *cax* is created as an instance of
+            Axes.  If *ax* is positioned with a subplotspec and *use_gridspec*
+            is ``True``, then *cax* is also positioned with a subplotspec.
+
+        Returns
+        -------
+        colorbar : `~matplotlib.colorbar.Colorbar`
+
+        Other Parameters
+        ----------------
+        %(_make_axes_kw_doc)s
+        %(_colormap_kw_doc)s
+
+        Notes
+        -----
+        If *mappable* is a `~.contour.ContourSet`, its *extend* kwarg is
+        included automatically.
+
+        The *shrink* kwarg provides a simple way to scale the colorbar with
+        respect to the axes. Note that if *cax* is specified, it determines the
+        size of the colorbar and *shrink* and *aspect* kwargs are ignored.
+
+        For more precise control, you can manually specify the positions of the
+        axes objects in which the mappable and the colorbar are drawn.  In this
+        case, do not use any of the axes properties kwargs.
+
+        It is known that some vector graphics viewers (svg and pdf) renders
+        white gaps between segments of the colorbar.  This is due to bugs in
+        the viewers, not Matplotlib.  As a workaround, the colorbar can be
+        rendered with overlapping segments::
+
+            cbar = colorbar()
+            cbar.solids.set_edgecolor("face")
+            draw()
+
+        However, this has negative consequences in other circumstances, e.g.
+        with semi-transparent images (alpha < 1) and colorbar extensions;
+        therefore, this workaround is not used by default (see issue #1188).
+        """
+
         if ax is None:
-            ax = getattr(mappable, "axes", self.gca())
+            ax = getattr(mappable, "axes", None)
 
         if (self.get_layout_engine() is not None and
                 not self.get_layout_engine().colorbar_gridspec):
             use_gridspec = False
         # Store the value of gca so that we can set it back later on.
         if cax is None:
+            if ax is None:
+                _api.warn_deprecated("3.6", message=(
+                    'Unable to determine Axes to steal space for Colorbar. '
+                    'Using gca(), but will raise in the future. '
+                    'Either provide the *cax* argument to use as the Axes for '
+                    'the Colorbar, provide the *ax* argument to steal space '
+                    'from it, or add *mappable* to an Axes.'))
+                ax = self.gca()
             current_ax = self.gca()
             userax = False
-            if (use_gridspec and isinstance(ax, SubplotBase)):
+            if (use_gridspec
+                    and isinstance(ax, mpl.axes._base._AxesBase)
+                    and ax.get_subplotspec()):
                 cax, kwargs = cbar.make_axes_gridspec(ax, **kwargs)
             else:
                 cax, kwargs = cbar.make_axes(ax, **kwargs)
@@ -1249,7 +1319,7 @@ default: %(va)s
             return
         self.subplotpars.update(left, bottom, right, top, wspace, hspace)
         for ax in self.axes:
-            if hasattr(ax, 'get_subplotspec'):
+            if ax.get_subplotspec() is not None:
                 ax._set_position(ax.get_subplotspec().get_position(self))
         self.stale = True
 
@@ -1296,9 +1366,7 @@ default: %(va)s
         """
         if axs is None:
             axs = self.axes
-        axs = np.ravel(axs)
-        axs = [ax for ax in axs if hasattr(ax, 'get_subplotspec')]
-
+        axs = [ax for ax in np.ravel(axs) if ax.get_subplotspec() is not None]
         for ax in axs:
             _log.debug(' Working on: %s', ax.get_xlabel())
             rowspan = ax.get_subplotspec().rowspan
@@ -1358,9 +1426,7 @@ default: %(va)s
         """
         if axs is None:
             axs = self.axes
-        axs = np.ravel(axs)
-        axs = [ax for ax in axs if hasattr(ax, 'get_subplotspec')]
-
+        axs = [ax for ax in np.ravel(axs) if ax.get_subplotspec() is not None]
         for ax in axs:
             _log.debug(' Working on: %s', ax.get_ylabel())
             colspan = ax.get_subplotspec().colspan
@@ -1413,7 +1479,7 @@ default: %(va)s
             Number of rows in grid.
 
         ncols : int, default: 1
-            Number or columns in grid.
+            Number of columns in grid.
 
         Returns
         -------
@@ -1443,7 +1509,6 @@ default: %(va)s
 
         _ = kwargs.pop('figure', None)  # pop in case user has added this...
         gs = GridSpec(nrows=nrows, ncols=ncols, figure=self, **kwargs)
-        self._gridspecs.append(gs)
         return gs
 
     def subfigures(self, nrows=1, ncols=1, squeeze=True,
@@ -1451,7 +1516,7 @@ default: %(va)s
                    width_ratios=None, height_ratios=None,
                    **kwargs):
         """
-        Add a subfigure to this figure or subfigure.
+        Add a set of subfigures to this figure or subfigure.
 
         A subfigure has the same artist methods as a figure, and is logically
         the same as a figure, but cannot print itself.
@@ -1613,8 +1678,6 @@ default: %(va)s
                 raise TypeError(
                     f"projection must be a string, None or implement a "
                     f"_as_mpl_axes method, not {projection!r}")
-        if projection_class.__name__ == 'Axes3D':
-            kwargs.setdefault('auto_add_to_figure', False)
         return projection_class, kwargs
 
     def get_default_bbox_extra_artists(self):
@@ -1638,7 +1701,7 @@ default: %(va)s
         Parameters
         ----------
         renderer : `.RendererBase` subclass
-            renderer that will be used to draw the figures (i.e.
+            Renderer that will be used to draw the figures (i.e.
             ``fig.canvas.get_renderer()``)
 
         bbox_extra_artists : list of `.Artist` or ``None``
@@ -1768,13 +1831,15 @@ default: %(va)s
             Defines the relative widths of the columns. Each column gets a
             relative width of ``width_ratios[i] / sum(width_ratios)``.
             If not given, all columns will have the same width.  Equivalent
-            to ``gridspec_kw={'width_ratios': [...]}``.
+            to ``gridspec_kw={'width_ratios': [...]}``. In the case of nested
+            layouts, this argument applies only to the outer layout.
 
         height_ratios : array-like of length *nrows*, optional
             Defines the relative heights of the rows. Each row gets a
             relative height of ``height_ratios[i] / sum(height_ratios)``.
             If not given, all rows will have the same height. Equivalent
-            to ``gridspec_kw={'height_ratios': [...]}``.
+            to ``gridspec_kw={'height_ratios': [...]}``. In the case of nested
+            layouts, this argument applies only to the outer layout.
 
         subplot_kw : dict, optional
             Dictionary with keywords passed to the `.Figure.add_subplot` call
@@ -1782,7 +1847,10 @@ default: %(va)s
 
         gridspec_kw : dict, optional
             Dictionary with keywords passed to the `.GridSpec` constructor used
-            to create the grid the subplots are placed on.
+            to create the grid the subplots are placed on. In the case of
+            nested layouts, this argument applies only to the outer layout.
+            For more complex layouts, users should use `.Figure.subfigures`
+            to create the nesting.
 
         empty_sentinel : object, optional
             Entry in the layout to mean "leave this space empty".  Defaults
@@ -1799,7 +1867,7 @@ default: %(va)s
 
         """
         subplot_kw = subplot_kw or {}
-        gridspec_kw = gridspec_kw or {}
+        gridspec_kw = dict(gridspec_kw or {})
         if height_ratios is not None:
             if 'height_ratios' in gridspec_kw:
                 raise ValueError("'height_ratios' must not be defined both as "
@@ -1952,7 +2020,7 @@ default: %(va)s
                     # recursively add the nested mosaic
                     rows, cols = nested_mosaic.shape
                     nested_output = _do_layout(
-                        gs[j, k].subgridspec(rows, cols, **gridspec_kw),
+                        gs[j, k].subgridspec(rows, cols),
                         nested_mosaic,
                         *_identify_keys_and_nested(nested_mosaic)
                     )
@@ -2122,7 +2190,7 @@ class SubFigure(FigureBase):
         ----------
         bbox : bbox or None
             If not None, then the bbox is used for relative bounding box.
-            Otherwise it is calculated from the subplotspec.
+            Otherwise, it is calculated from the subplotspec.
         """
         if bbox is not None:
             self.bbox_relative.p0 = bbox.p0
@@ -2188,7 +2256,6 @@ class SubFigure(FigureBase):
 
     def draw(self, renderer):
         # docstring inherited
-        self._cachedRenderer = renderer
 
         # draw the figure bounding box, perhaps none for white figure
         if not self.get_visible():
@@ -2359,9 +2426,12 @@ class Figure(FigureBase):
             if isinstance(tight_layout, dict):
                 self.get_layout_engine().set(**tight_layout)
         elif constrained_layout is not None:
-            self.set_layout_engine(layout='constrained')
             if isinstance(constrained_layout, dict):
+                self.set_layout_engine(layout='constrained')
                 self.get_layout_engine().set(**constrained_layout)
+            elif constrained_layout:
+                self.set_layout_engine(layout='constrained')
+
         else:
             # everything is None, so use default:
             self.set_layout_engine(layout=layout)
@@ -2372,10 +2442,6 @@ class Figure(FigureBase):
         # pickling.
         self._canvas_callbacks = cbook.CallbackRegistry(
             signals=FigureCanvasBase.events)
-        self._button_pick_id = self._canvas_callbacks._connect_picklable(
-            'button_press_event', self.pick)
-        self._scroll_pick_id = self._canvas_callbacks._connect_picklable(
-            'scroll_event', self.pick)
         connect = self._canvas_callbacks._connect_picklable
         self._mouse_key_ids = [
             connect('key_press_event', backend_bases._key_handler),
@@ -2386,6 +2452,8 @@ class Figure(FigureBase):
             connect('scroll_event', backend_bases._mouse_handler),
             connect('motion_notify_event', backend_bases._mouse_handler),
         ]
+        self._button_pick_id = connect('button_press_event', self.pick)
+        self._scroll_pick_id = connect('scroll_event', self.pick)
 
         if figsize is None:
             figsize = mpl.rcParams['figure.figsize']
@@ -2428,10 +2496,6 @@ class Figure(FigureBase):
 
         self._axstack = _AxesStack()  # track all figure axes and current axes
         self.clear()
-        self._cachedRenderer = None
-
-        # list of child gridspecs for this figure
-        self._gridspecs = []
 
     def pick(self, mouseevent):
         if not self.canvas.widgetlock.locked():
@@ -2444,7 +2508,9 @@ class Figure(FigureBase):
         If the figure has used the old engine and added a colorbar then the
         value of colorbar_gridspec must be the same on the new engine.
         """
-        if old is None or old.colorbar_gridspec == new.colorbar_gridspec:
+        if old is None or new is None:
+            return True
+        if old.colorbar_gridspec == new.colorbar_gridspec:
             return True
         # colorbar layout different, so check if any colorbars are on the
         # figure...
@@ -2460,15 +2526,29 @@ class Figure(FigureBase):
 
         Parameters
         ----------
-        layout: {'constrained', 'compressed', 'tight'} or `~.LayoutEngine`
-            'constrained' will use `~.ConstrainedLayoutEngine`,
-            'compressed' will also use ConstrainedLayoutEngine, but with a
-            correction that attempts to make a good layout for fixed-aspect
-            ratio Axes. 'tight' uses `~.TightLayoutEngine`.  Users and
-            libraries can define their own layout engines as well.
+        layout: {'constrained', 'compressed', 'tight', 'none'} or \
+`LayoutEngine` or None
+
+            - 'constrained' will use `~.ConstrainedLayoutEngine`
+            - 'compressed' will also use `~.ConstrainedLayoutEngine`, but with
+              a correction that attempts to make a good layout for fixed-aspect
+              ratio Axes.
+            - 'tight' uses `~.TightLayoutEngine`
+            - 'none' removes layout engine.
+
+            If `None`, the behavior is controlled by :rc:`figure.autolayout`
+            (which if `True` behaves as if 'tight' was passed) and
+            :rc:`figure.constrained_layout.use` (which if `True` behaves as if
+            'constrained' was passed).  If both are `True`,
+            :rc:`figure.autolayout` takes priority.
+
+            Users and libraries can define their own layout engines and pass
+            the instance directly as well.
+
         kwargs: dict
             The keyword arguments are passed to the layout engine to set things
             like padding and margin sizes.  Only used if *layout* is a string.
+
         """
         if layout is None:
             if mpl.rcParams['figure.autolayout']:
@@ -2485,6 +2565,14 @@ class Figure(FigureBase):
         elif layout == 'compressed':
             new_layout_engine = ConstrainedLayoutEngine(compress=True,
                                                         **kwargs)
+        elif layout == 'none':
+            if self._layout_engine is not None:
+                new_layout_engine = PlaceHolderLayoutEngine(
+                    self._layout_engine.adjust_compatible,
+                    self._layout_engine.colorbar_gridspec
+                )
+            else:
+                new_layout_engine = None
         elif isinstance(layout, LayoutEngine):
             new_layout_engine = layout
         else:
@@ -2566,9 +2654,7 @@ class Figure(FigureBase):
     get_axes = axes.fget
 
     def _get_renderer(self):
-        if self._cachedRenderer is not None:
-            return self._cachedRenderer
-        elif hasattr(self.canvas, 'get_renderer'):
+        if hasattr(self.canvas, 'get_renderer'):
             return self.canvas.get_renderer()
         else:
             return _get_renderer(self)
@@ -2604,7 +2690,8 @@ class Figure(FigureBase):
                      pending=True)
     def set_tight_layout(self, tight):
         """
-        Set whether and how `.tight_layout` is called when drawing.
+        [*Discouraged*] Set whether and how `.tight_layout` is called when
+        drawing.
 
         .. admonition:: Discouraged
 
@@ -2637,8 +2724,10 @@ class Figure(FigureBase):
                      pending=True)
     def set_constrained_layout(self, constrained):
         """
-        Set whether ``constrained_layout`` is used upon drawing. If None,
-        :rc:`figure.constrained_layout.use` value will be used.
+        [*Discouraged*] Set whether ``constrained_layout`` is used upon
+        drawing.
+
+        If None, :rc:`figure.constrained_layout.use` value will be used.
 
         When providing a dict containing the keys ``w_pad``, ``h_pad``
         the default ``constrained_layout`` paddings will be
@@ -2962,7 +3051,6 @@ class Figure(FigureBase):
     @allow_rasterization
     def draw(self, renderer):
         # docstring inherited
-        self._cachedRenderer = renderer
 
         # draw the figure bounding box, perhaps none for white figure
         if not self.get_visible():
@@ -3003,14 +3091,8 @@ class Figure(FigureBase):
     def draw_artist(self, a):
         """
         Draw `.Artist` *a* only.
-
-        This method can only be used after an initial draw of the figure,
-        because that creates and caches the renderer needed here.
         """
-        if self._cachedRenderer is None:
-            raise AttributeError("draw_artist can only be used after an "
-                                 "initial draw which caches the renderer")
-        a.draw(self._cachedRenderer)
+        a.draw(self.canvas.get_renderer())
 
     def __getstate__(self):
         state = super().__getstate__()
@@ -3019,9 +3101,6 @@ class Figure(FigureBase):
         # of meaning that a figure can be detached from one canvas, and
         # re-attached to another.
         state.pop("canvas")
-
-        # Set cached renderer to None -- it can't be pickled.
-        state["_cachedRenderer"] = None
 
         # discard any changes to the dpi due to pixel ratio changes
         state["_dpi"] = state.get('_original_dpi', state['_dpi'])
@@ -3055,7 +3134,8 @@ class Figure(FigureBase):
             import matplotlib._pylab_helpers as pylab_helpers
             allnums = plt.get_fignums()
             num = max(allnums) + 1 if allnums else 1
-            mgr = plt._backend_mod.new_figure_manager_given_figure(num, self)
+            backend = plt._get_backend_mod()
+            mgr = backend.new_figure_manager_given_figure(num, self)
             pylab_helpers.Gcf._set_new_active_manager(mgr)
             plt.draw_if_interactive()
 
@@ -3218,7 +3298,7 @@ class Figure(FigureBase):
             clicks until the input is terminated manually.
         timeout : float, default: 30 seconds
             Number of seconds to wait before timing out. If zero or negative
-            will never timeout.
+            will never time out.
         show_clicks : bool, default: True
             If True, show a red cross at the location of each click.
         mouse_add : `.MouseButton` or None, default: `.MouseButton.LEFT`
@@ -3237,7 +3317,7 @@ class Figure(FigureBase):
         -----
         The keyboard can also be used to select points in case your mouse
         does not have one or more of the buttons.  The delete and backspace
-        keys act like right clicking (i.e., remove last point), the enter key
+        keys act like right-clicking (i.e., remove last point), the enter key
         terminates input and any other key (not already used by the window
         manager) selects a point.
         """
@@ -3348,12 +3428,6 @@ class Figure(FigureBase):
         .Figure.set_layout_engine
         .pyplot.tight_layout
         """
-        from ._tight_layout import get_subplotspec_list
-        subplotspec_list = get_subplotspec_list(self.axes)
-        if None in subplotspec_list:
-            _api.warn_external("This figure includes Axes that are not "
-                               "compatible with tight_layout, so results "
-                               "might be incorrect.")
         # note that here we do not permanently set the figures engine to
         # tight_layout but rather just perform the layout in place and remove
         # any previous engines.

@@ -1,6 +1,6 @@
 """
 ==========================================
-3D voxel / volumetric plot with rgb colors
+3D voxel / volumetric plot with RGB colors
 ==========================================
 
 Demonstrates using `.Axes3D.voxels` to visualize parts of a color space.
@@ -12,7 +12,7 @@ import numpy as np
 
 def midpoints(x):
     sl = ()
-    for i in range(x.ndim):
+    for _ in range(x.ndim):
         x = (x[sl + np.index_exp[:-1]] + x[sl + np.index_exp[1:]]) / 2.0
         sl += np.index_exp[:]
     return x
@@ -39,5 +39,6 @@ ax.voxels(r, g, b, sphere,
           edgecolors=np.clip(2*colors - 0.5, 0, 1),  # brighter
           linewidth=0.5)
 ax.set(xlabel='r', ylabel='g', zlabel='b')
+ax.set_aspect('equal')
 
 plt.show()

@@ -14,15 +14,14 @@ import numpy as np
 
 try:
     import cairo
-    if cairo.version_info < (1, 11, 0):
-        # Introduced create_for_data for Py3.
+    if cairo.version_info < (1, 14, 0):  # Introduced set_device_scale.
         raise ImportError
 except ImportError:
     try:
         import cairocffi as cairo
     except ImportError as err:
         raise ImportError(
-            "cairo backend requires that pycairo>=1.11.0 or cairocffi "
+            "cairo backend requires that pycairo>=1.14.0 or cairocffi "
             "is installed") from err
 
 import matplotlib as mpl
@@ -33,25 +32,6 @@ from matplotlib.backend_bases import (
 from matplotlib.font_manager import ttfFontProperty
 from matplotlib.path import Path
 from matplotlib.transforms import Affine2D
-
-
-backend_version = cairo.version
-
-
-if cairo.__name__ == "cairocffi":
-    # Convert a pycairo context to a cairocffi one.
-    def _to_context(ctx):
-        if not isinstance(ctx, cairo.Context):
-            ctx = cairo.Context._from_pointer(
-                cairo.ffi.cast(
-                    'cairo_t **',
-                    id(ctx) + object.__basicsize__)[0],
-                incref=True)
-        return ctx
-else:
-    # Pass-through a pycairo context.
-    def _to_context(ctx):
-        return ctx
 
 
 def _append_path(ctx, path, transform, clip=None):
@@ -438,6 +418,9 @@ class FigureCanvasCairo(FigureCanvasBase):
             self._cached_renderer = RendererCairo(self.figure.dpi)
         return self._cached_renderer
 
+    def get_renderer(self):
+        return self._renderer
+
     def copy_from_bbox(self, bbox):
         surface = self._renderer.gc.ctx.get_target()
         if not isinstance(surface, cairo.ImageSurface):
@@ -547,7 +530,21 @@ class FigureCanvasCairo(FigureCanvasBase):
     print_svgz = functools.partialmethod(_save, "svgz")
 
 
+@_api.deprecated("3.6")
+class _RendererGTKCairo(RendererCairo):
+    def set_context(self, ctx):
+        if (cairo.__name__ == "cairocffi"
+                and not isinstance(ctx, cairo.Context)):
+            ctx = cairo.Context._from_pointer(
+                cairo.ffi.cast(
+                    'cairo_t **',
+                    id(ctx) + object.__basicsize__)[0],
+                incref=True)
+        self.gc.ctx = ctx
+
+
 @_Backend.export
 class _BackendCairo(_Backend):
+    backend_version = cairo.version
     FigureCanvas = FigureCanvasCairo
     FigureManager = FigureManagerBase

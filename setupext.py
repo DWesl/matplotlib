@@ -198,9 +198,12 @@ if os.path.exists(mplsetup_cfg):
 options = {
     'backend': config.get('rc_options', 'backend', fallback=None),
     'system_freetype': config.getboolean(
-        'libs', 'system_freetype', fallback=sys.platform.startswith('aix')),
+        'libs', 'system_freetype',
+        fallback=sys.platform.startswith(('aix', 'os400'))
+    ),
     'system_qhull': config.getboolean(
-        'libs', 'system_qhull', fallback=False),
+        'libs', 'system_qhull', fallback=sys.platform.startswith('os400')
+    ),
 }
 
 
@@ -213,7 +216,7 @@ else:
 def print_status(package, status):
     initial_indent = "%12s: " % package
     indent = ' ' * 18
-    print_raw(textwrap.fill(str(status), width=80,
+    print_raw(textwrap.fill(status, width=80,
                             initial_indent=initial_indent,
                             subsequent_indent=indent))
 
@@ -479,11 +482,17 @@ class Tests(OptionalPackage):
                 *_pkg_data_helper('matplotlib', 'tests/baseline_images'),
                 *_pkg_data_helper('matplotlib', 'tests/tinypages'),
                 'tests/cmr10.pfb',
+                'tests/Courier10PitchBT-Bold.pfb',
                 'tests/mpltest.ttf',
                 'tests/test_*.ipynb',
             ],
             'mpl_toolkits': [
-                *_pkg_data_helper('mpl_toolkits', 'tests/baseline_images'),
+                *_pkg_data_helper('mpl_toolkits/axes_grid1',
+                                  'tests/baseline_images'),
+                *_pkg_data_helper('mpl_toolkits/axisartist'
+                                  'tests/baseline_images'),
+                *_pkg_data_helper('mpl_toolkits/mplot3d'
+                                  'tests/baseline_images'),
             ]
         }
 
@@ -631,7 +640,7 @@ class FreeType(SetupPackage):
                 "--with-png=no", "--with-harfbuzz=no", "--enable-static",
                 "--disable-shared"
             ]
-            host = sysconfig.get_config_var('BUILD_GNU_TYPE')
+            host = sysconfig.get_config_var('HOST_GNU_TYPE')
             if host is not None:  # May be unset on PyPy.
                 configure.append(f"--host={host}")
             subprocess.check_call(configure, env=env, cwd=src_path)
@@ -779,7 +788,7 @@ class BackendMacOSX(OptionalPackage):
             'matplotlib.backends._macosx', [
                 'src/_macosx.m'
             ])
-        ext.extra_compile_args.extend(['-Werror', '-fobjc-arc'])
+        ext.extra_compile_args.extend(['-Werror'])
         ext.extra_link_args.extend(['-framework', 'Cocoa'])
         if platform.python_implementation().lower() == 'pypy':
             ext.extra_compile_args.append('-DPYPY=1')

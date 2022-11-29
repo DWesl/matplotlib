@@ -3,8 +3,8 @@
 pcolormesh
 ==========
 
-`.axes.Axes.pcolormesh` allows you to generate 2D image-style plots.  Note it
-is faster than the similar `~.axes.Axes.pcolor`.
+`.axes.Axes.pcolormesh` allows you to generate 2D image-style plots.
+Note that it is faster than the similar `~.axes.Axes.pcolor`.
 
 """
 
@@ -52,9 +52,8 @@ ax.pcolormesh(X, Y, Z)
 # Often a user wants to pass *X* and *Y* with the same sizes as *Z* to
 # `.axes.Axes.pcolormesh`. This is also allowed if ``shading='auto'`` is
 # passed (default set by :rc:`pcolor.shading`). Pre Matplotlib 3.3,
-# ``shading='flat'`` would drop the last column and row of *Z*; while that
-# is still allowed for back compatibility purposes, a DeprecationWarning is
-# raised. If this is really what you want, then simply drop the last row and
+# ``shading='flat'`` would drop the last column and row of *Z*, but now gives
+# an error. If this is really what you want, then simply drop the last row and
 # column of Z manually:
 
 x = np.arange(10)  # len = 10

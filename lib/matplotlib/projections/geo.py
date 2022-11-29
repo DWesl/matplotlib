@@ -1,6 +1,7 @@
 import numpy as np
 
-from matplotlib import _api, rcParams
+import matplotlib as mpl
+from matplotlib import _api
 from matplotlib.axes import Axes
 import matplotlib.axis as maxis
 from matplotlib.patches import Circle
@@ -51,7 +52,7 @@ class GeoAxes(Axes):
         # Why do we need to turn on yaxis tick labels, but
         # xaxis tick labels are already on?
 
-        self.grid(rcParams['axes.grid'])
+        self.grid(mpl.rcParams['axes.grid'])
 
         Axes.set_xlim(self, -np.pi, np.pi)
         Axes.set_ylim(self, -np.pi / 2.0, np.pi / 2.0)
@@ -198,17 +199,17 @@ class GeoAxes(Axes):
 
     def can_zoom(self):
         """
-        Return whether this axes supports the zoom box button functionality.
+        Return whether this Axes supports the zoom box button functionality.
 
-        This axes object does not support interactive zoom box.
+        This Axes object does not support interactive zoom box.
         """
         return False
 
     def can_pan(self):
         """
-        Return whether this axes supports the pan/zoom button functionality.
+        Return whether this Axes supports the pan/zoom button functionality.
 
-        This axes object does not support interactive pan/zoom.
+        This Axes object does not support interactive pan/zoom.
         """
         return False
 

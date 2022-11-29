@@ -7,8 +7,8 @@ import datetime
 from enum import Enum
 import functools
 from io import StringIO
+import itertools
 import logging
-import math
 import os
 import pathlib
 import re
@@ -22,11 +22,10 @@ import matplotlib as mpl
 from matplotlib import _api, cbook, _path, _text_helpers
 from matplotlib._afm import AFM
 from matplotlib.backend_bases import (
-    _Backend, FigureCanvasBase, FigureManagerBase, GraphicsContextBase,
-    RendererBase)
+    _Backend, FigureCanvasBase, FigureManagerBase, RendererBase)
 from matplotlib.cbook import is_writable_file_like, file_requires_unicode
 from matplotlib.font_manager import get_font
-from matplotlib.ft2font import LOAD_NO_HINTING, LOAD_NO_SCALE, FT2Font
+from matplotlib.ft2font import LOAD_NO_SCALE, FT2Font
 from matplotlib._ttconv import convert_ttf_to_ps
 from matplotlib._mathtext_data import uni2type1
 from matplotlib.path import Path
@@ -35,18 +34,22 @@ from matplotlib.transforms import Affine2D
 from matplotlib.backends.backend_mixed import MixedModeRenderer
 from . import _backend_pdf_ps
 
-_log = logging.getLogger(__name__)
 
-backend_version = 'Level II'
+_log = logging.getLogger(__name__)
 debugPS = False
 
 
+@_api.deprecated("3.7")
 class PsBackendHelper:
     def __init__(self):
         self._cached = {}
 
 
-ps_backend_helper = PsBackendHelper()
+@_api.caching_module_getattr
+class __getattr__:
+    # module-level deprecations
+    ps_backend_helper = _api.deprecated("3.7", obj_type="")(
+        property(lambda self: PsBackendHelper()))
 
 
 papersize = {'letter': (8.5, 11),
@@ -89,7 +92,7 @@ def _nums_to_str(*args):
     return " ".join(f"{arg:1.3f}".rstrip("0").rstrip(".") for arg in args)
 
 
-@_api.deprecated("3.6", alternative="Vendor the code")
+@_api.deprecated("3.6", alternative="a vendored copy of this function")
 def quote_ps_string(s):
     """
     Quote dangerous characters of S for use in a PostScript string constant.
@@ -532,7 +535,7 @@ grestore
 
     @_log_if_debug_on
     def draw_path_collection(self, gc, master_transform, paths, all_transforms,
-                             offsets, offsetTrans, facecolors, edgecolors,
+                             offsets, offset_trans, facecolors, edgecolors,
                              linewidths, linestyles, antialiaseds, urls,
                              offset_position):
         # Is the optimization worth it? Rough calculation:
@@ -548,7 +551,7 @@ grestore
         if not should_do_optimization:
             return RendererBase.draw_path_collection(
                 self, gc, master_transform, paths, all_transforms,
-                offsets, offsetTrans, facecolors, edgecolors,
+                offsets, offset_trans, facecolors, edgecolors,
                 linewidths, linestyles, antialiaseds, urls,
                 offset_position)
 
@@ -567,8 +570,8 @@ translate
             path_codes.append(name)
 
         for xo, yo, path_id, gc0, rgbFace in self._iter_collection(
-                gc, master_transform, all_transforms, path_codes, offsets,
-                offsetTrans, facecolors, edgecolors, linewidths, linestyles,
+                gc, path_codes, offsets, offset_trans,
+                facecolors, edgecolors, linewidths, linestyles,
                 antialiaseds, urls, offset_position):
             ps = "%g %g %s" % (xo, yo, path_id)
             self._draw_ps(ps, gc0, rgbFace)
@@ -628,13 +631,15 @@ grestore
         if ismath:
             return self.draw_mathtext(gc, x, y, s, prop, angle)
 
+        stream = []  # list of (ps_name, x, char_name)
+
         if mpl.rcParams['ps.useafm']:
             font = self._get_font_afm(prop)
+            ps_name = (font.postscript_name.encode("ascii", "replace")
+                        .decode("ascii"))
             scale = 0.001 * prop.get_size_in_points()
-
             thisx = 0
             last_name = None  # kerns returns 0 for None.
-            xs_names = []
             for c in s:
                 name = uni2type1.get(ord(c), f"uni{ord(c):04X}")
                 try:
@@ -645,23 +650,25 @@ grestore
                 kern = font.get_kern_dist_from_name(last_name, name)
                 last_name = name
                 thisx += kern * scale
-                xs_names.append((thisx, name))
+                stream.append((ps_name, thisx, name))
                 thisx += width * scale
 
         else:
             font = self._get_font_ttf(prop)
-            font.set_text(s, 0, flags=LOAD_NO_HINTING)
             self._character_tracker.track(font, s)
-            xs_names = [(item.x, font.get_glyph_name(item.glyph_idx))
-                        for item in _text_helpers.layout(s, font)]
-
+            for item in _text_helpers.layout(s, font):
+                ps_name = (item.ft_object.postscript_name
+                           .encode("ascii", "replace").decode("ascii"))
+                glyph_name = item.ft_object.get_glyph_name(item.glyph_idx)
+                stream.append((ps_name, item.x, glyph_name))
         self.set_color(*gc.get_rgb())
-        ps_name = (font.postscript_name
-                   .encode("ascii", "replace").decode("ascii"))
-        self.set_font(ps_name, prop.get_size_in_points())
-        thetext = "\n".join(f"{x:g} 0 m /{name:s} glyphshow"
-                            for x, name in xs_names)
-        self._pswriter.write(f"""\
+
+        for ps_name, group in itertools. \
+                groupby(stream, lambda entry: entry[0]):
+            self.set_font(ps_name, prop.get_size_in_points(), False)
+            thetext = "\n".join(f"{x:g} 0 m /{name:s} glyphshow"
+                                for _, x, name in group)
+            self._pswriter.write(f"""\
 gsave
 {self._get_clip_cmd(gc)}
 {x:g} {y:g} translate
@@ -815,9 +822,8 @@ class FigureCanvasPS(FigureCanvasBase):
     def get_default_filetype(self):
         return 'ps'
 
-    @_api.delete_parameter("3.5", "args")
     def _print_ps(
-            self, fmt, outfile, *args,
+            self, fmt, outfile, *,
             metadata=None, papertype=None, orientation='portrait',
             **kwargs):
 
@@ -864,7 +870,7 @@ class FigureCanvasPS(FigureCanvasBase):
         Render the figure to a filesystem path or a file-like object.
 
         Parameters are as for `.print_figure`, except that *dsc_comments* is a
-        all string containing Document Structuring Convention comments,
+        string containing Document Structuring Convention comments,
         generated from the *metadata* parameter to `.print_figure`.
         """
         is_eps = fmt == 'eps'
@@ -1181,7 +1187,7 @@ def gs_distill(tmpfile, eps=False, ptype='letter', bbox=None, rotated=False):
     # the original bbox can be restored during the pstoeps step.
 
     if eps:
-        # For some versions of gs, above steps result in an ps file where the
+        # For some versions of gs, above steps result in a ps file where the
         # original bbox is no more correct. Do not adjust bbox for now.
         pstoeps(tmpfile, bbox, rotated=rotated)
 
@@ -1200,7 +1206,7 @@ def xpdf_distill(tmpfile, eps=False, ptype='letter', bbox=None, rotated=False):
         tmppdf = pathlib.Path(tmpdir, "tmp.pdf")
         tmpps = pathlib.Path(tmpdir, "tmp.ps")
         # Pass options as `-foo#bar` instead of `-foo=bar` to keep Windows
-        # happy (https://www.ghostscript.com/doc/9.22/Use.htm#MS_Windows).
+        # happy (https://ghostscript.com/doc/9.56.1/Use.htm#MS_Windows).
         cbook._check_and_log_subprocess(
             ["ps2pdf",
              "-dAutoFilterColorImages#false",
@@ -1350,4 +1356,5 @@ psDefs = [
 
 @_Backend.export
 class _BackendPS(_Backend):
+    backend_version = 'Level II'
     FigureCanvas = FigureCanvasPS

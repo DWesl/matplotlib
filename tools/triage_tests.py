@@ -40,13 +40,13 @@ from matplotlib.backends.qt_compat import _enum, _exec
 
 BASELINE_IMAGES = [
     Path('lib/matplotlib/tests/baseline_images'),
-    Path('lib/mpl_toolkits/tests/baseline_images'),
+    *Path('lib/mpl_toolkits').glob('*/tests/baseline_images'),
 ]
 
 
 # Non-png image extensions
 
-exts = ['pdf', 'svg']
+exts = ['pdf', 'svg', 'eps']
 
 
 class Thumbnail(QtWidgets.QFrame):

@@ -433,7 +433,7 @@ jobs:
           git describe
           # Set flag in a delayed manner to avoid issues with installing other
           # packages
-          export CPPFLAGS='--coverage'
+          export CPPFLAGS='--coverage' LDFLAGS='--coverage'
           cat <<EOT >> mplsetup.cfg
           [rc_options]
           backend=Agg
@@ -447,7 +447,7 @@ jobs:
           # constraints are held.
           python setup.py build_ext
           python -m pip install --no-deps -ve .
-          unset CPPFLAGS
+          unset CPPFLAGS LDFLAGS
 
       - name: Find DLLs to rebase
         shell: bash.exe -eo pipefail -o igncr "{0}"

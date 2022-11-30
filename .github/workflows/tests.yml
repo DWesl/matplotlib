@@ -341,13 +341,13 @@ jobs:
             make autoconf autoconf2.5 automake automake1.10 libtool m4
             libqhull-devel libfreetype-devel
             libjpeg-devel libwebp-devel
-            
+
       - name: Mark test repo safe
         shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |
           git.exe config --global --add safe.directory /proc/cygdrive/d/a/matplotlib/matplotlib
           git config --global --add safe.directory /cygdrive/d/a/matplotlib/matplotlib
-          
+
       - name: Use dash for /bin/sh
         shell: bash.exe -eo pipefail -o igncr "{0}"
         run: |

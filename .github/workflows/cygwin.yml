@@ -175,7 +175,7 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install kiwisolver 'numpy>=1.22,<1.26' pillow importlib_resources
           grep -v -F -e psutil requirements/testing/all.txt >requirements_test.txt
-          python -m pip install meson-python git+https://github.com/DWesl/pybind11@patch-1
+          python -m pip install meson-python
           export PATH="/usr/local/bin:$PATH"
           python -m pip install --no-build-isolation 'contourpy>=1.0.1'
           python -m pip install --upgrade cycler fonttools \

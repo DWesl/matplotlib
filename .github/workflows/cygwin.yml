@@ -87,7 +87,7 @@ jobs:
           packages: >-
             ccache gcc-g++ gdb git graphviz libcairo-devel libffi-devel
             libgeos-devel libQt5Core-devel pkgconf libglib2.0-devel ninja
-            noto-cjk-fonts
+            noto-cjk-fonts cmake
             python3${{ matrix.python-minor-version }}-devel
             python3${{ matrix.python-minor-version }}-pip
             python3${{ matrix.python-minor-version }}-wheel
